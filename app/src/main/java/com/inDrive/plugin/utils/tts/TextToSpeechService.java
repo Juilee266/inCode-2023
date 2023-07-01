@@ -44,7 +44,6 @@ public class TextToSpeechService extends Service implements TextToSpeech.OnInitL
             throw new RuntimeException(message);
         }
 
-        // TODO: Research and make it configurable
         int result = textToSpeech.setLanguage(Locale.US);
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
             String message = "Unsupported language (en-US) used for text to speech.";

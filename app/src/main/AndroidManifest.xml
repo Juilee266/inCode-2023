@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.inDrive.plugin.voice">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION\" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -16,6 +20,7 @@
         </activity>
 
         <service android:name="com.inDrive.plugin.utils.tts.TextToSpeechService"></service>
+        <service android:name="com.inDrive.plugin.navigation.NavigationService"></service>
     </application>
 
 </manifest>

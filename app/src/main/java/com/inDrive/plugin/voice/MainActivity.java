@@ -1,6 +1,5 @@
 package com.inDrive.plugin.voice;
 
-import android.app.Service;
 import android.content.Intent;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
@@ -8,12 +7,15 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.inDrive.plugin.common.servicebinding.ConcreteServiceConnection;
+import com.inDrive.plugin.navigation.NavigationService;
+import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
 import com.inDrive.plugin.utils.tts.TextToSpeechService;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
     private ConcreteServiceConnection<TextToSpeechService> textToSpeechServiceConnection = new ConcreteServiceConnection<>();
+    private ConcreteServiceConnection<NavigationService> navigationServiceConcreteServiceConnection = new ConcreteServiceConnection<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,9 +27,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected  void onStart() {
         super.onStart();
+
         Intent intent = new Intent(this, TextToSpeechService.class);
         startService(intent);
         bindService(intent, textToSpeechServiceConnection, BIND_AUTO_CREATE);
+
+        Intent navigationServiceIntent = new Intent(this, NavigationService.class);
+        startService(navigationServiceIntent);
+        bindService(navigationServiceIntent, navigationServiceConcreteServiceConnection, BIND_AUTO_CREATE);
+
         Log.d(TAG, "Activity Started.");
 
         // TODO: Remove once finalized. :P
@@ -47,6 +55,16 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 }, 2000);
+
+        new Handler().postDelayed(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        GraphhopperClient client = new GraphhopperClient();
+                        client.GetDirections();
+                    }
+                }, 2000
+        );
     }
 
     @Override
