@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
 
-        assertEquals("com.ort.edu.helloworld", appContext.getPackageName());
+        assertEquals("com.inDrive.plugin.voice", appContext.getPackageName());
     }
 }
