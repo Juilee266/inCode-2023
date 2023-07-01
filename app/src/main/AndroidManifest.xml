@@ -2,12 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.inDrive.plugin.voice">
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name="com.inDrive.plugin.voice.MainActivity">
+        <service
+            android:name="com.inDrive.plugin.services.LocationService"
+            android:enabled="true"
+            android:exported="true" />
+        <service
+            android:name="com.inDrive.plugin.services.STTListenerService"
+            android:enabled="true"
+            android:exported="true" />
+
+        <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -15,7 +26,7 @@
             </intent-filter>
         </activity>
 
-        <service android:name="com.inDrive.plugin.utils.tts.TextToSpeechService"></service>
+        <service android:name="com.inDrive.plugin.utils.tts.TextToSpeechService" />
     </application>
 
 </manifest>
