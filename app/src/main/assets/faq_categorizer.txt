@@ -1,0 +1,14 @@
+greeting    hi hi. hello how are you ? hey . hows it going good morning good evening good afternoon whats up
+book_cab_instruction    call me a cab from could you book a cab for me? Book a cab for me from to
+location_inquiry    where am i right now? tell me current location. what is the current location?
+driver_inquiry  tell me drivers details driver what is name of the driver? who is the driver?
+vehicle_inquiry vehicle number please. vehicle details?
+time_for_driver how long will it take for driver?
+time_to_reach   how long will it take to reach?
+change_source   change my pickup
+change_destination  change dropping point . destination update
+otp_inquiry what is the OTP. Repeat the OTP
+start_instruction   start the ride
+all_okay    everything is good okay alright safe
+stars   give stars five four three two one
+vehicle_inquiry juilee number?
