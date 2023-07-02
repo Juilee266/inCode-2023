@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Handler;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
@@ -11,13 +12,12 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.inDrive.plugin.common.TextToSpeechProvider;
 import com.inDrive.plugin.services.LocationService;
 import com.inDrive.plugin.services.STTListenerService;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-
-//    private ConcreteServiceConnection<TextToSpeechService> textToSpeechServiceConnection = new ConcreteServiceConnection<>();
 
     private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
         @Override
@@ -39,6 +39,8 @@ public class MainActivity extends AppCompatActivity {
     };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // TODO: Ask for missing permissions
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
@@ -82,7 +84,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         LocalBroadcastManager.getInstance(this).unregisterReceiver(speechToTextReceiver);
-//        unbindService(textToSpeechServiceConnection);
         Log.d(TAG, "Activity Destroyed.");
     }
 }

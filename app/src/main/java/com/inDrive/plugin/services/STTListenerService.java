@@ -5,40 +5,64 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.nfc.Tag;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
+import com.inDrive.plugin.common.TextToSpeechProvider;
 import com.inDrive.plugin.voice.MainActivity;
 import com.inDrive.plugin.voice.R;
 
+import java.util.Locale;
+
 public class STTListenerService extends Service {
-    public static final String CHANNEL_ID = "STTServiceChannel";
-    Integer counter = 0;
+    private static final String CHANNEL_ID = "STTServiceChannel";
+    private static final String TAG = "STTListenerService";
+
+    private SpeechRecognizer speechRecognizer;
+    private Intent recognizerIntent;
+    private TextToSpeechProvider textToSpeechProvider;
+
+    private BroadcastReceiver commandReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String message = intent.getStringExtra("message");
+            if (message == null) return;
+            if (message.equals("START_LISTENING")) startListening();
+
+            else if (message.equals("STOP_LISTENING")) stopListening();
+        }
+    };
+
+    //Integer counter = 0;
     @Override
     public void onCreate() {
         super.onCreate();
 
-        new Thread(() -> {
-            while (true) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                //REST OF CODE HERE//
-                counter = counter + 1;
-                Intent intent1 = new Intent("DATA_FROM_STT");
-                // You can also include some extra data.
-                intent1.putExtra("message", counter.toString());
-                LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent1);
-            }
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(getApplicationContext());
+        recognizerIntent = getRecognizerIntent();
+        speechRecognizer.setRecognitionListener(new SpeechRecognitionListener());
+        startListening();
 
-        }).start();
+        LocalBroadcastManager.getInstance(this).registerReceiver(commandReceiver,
+                new IntentFilter("STT_COMMANDS"));
+
+        textToSpeechProvider = TextToSpeechProvider.getInstance(this);
+
+        Log.i(TAG, "Initialized speech to text listener service.");
     }
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -61,14 +85,23 @@ public class STTListenerService extends Service {
     }
     @Override
     public void onDestroy() {
-        System.out.println("Stopped service");
+        Log.i(TAG, "Destroying speech to text listener service.");
         super.onDestroy();
     }
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        Log.d("serv_create", "Created service");
         return null;
+    }
+
+    public void startListening() {
+        speechRecognizer.startListening(recognizerIntent);
+    }
+
+    public void stopListening() {
+        speechRecognizer.cancel();
+        speechRecognizer.stopListening();
     }
 
 
@@ -81,6 +114,77 @@ public class STTListenerService extends Service {
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
             manager.createNotificationChannel(serviceChannel);
+        }
+    }
+
+    private Intent getRecognizerIntent() {
+        Intent speechRecognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        return speechRecognizerIntent;
+    }
+
+    private Intent getDataIntent(String text) {
+        Intent intent = new Intent("DATA_FROM_STT");
+        intent.putExtra("message", text);
+        return intent;
+    }
+
+    private class SpeechRecognitionListener implements RecognitionListener {
+        private static final String TAG = "SpeechRecognitionListener";
+
+        @Override
+        public void onReadyForSpeech(Bundle params) {
+
+        }
+
+        @Override
+        public void onBeginningOfSpeech() {
+
+        }
+
+        @Override
+        public void onRmsChanged(float rmsdB) {
+
+        }
+
+        @Override
+        public void onBufferReceived(byte[] buffer) {
+
+        }
+
+        @Override
+        public void onEndOfSpeech() {
+
+        }
+
+        @Override
+        public void onError(int error) {
+            Log.d(TAG, String.valueOf(error));
+            if (error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+                startListening();
+        }
+
+        @Override
+        public void onResults(Bundle results) {
+            String text = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).get(0);
+            Log.d(TAG, text);
+
+            textToSpeechProvider.speak(text);
+            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(getDataIntent(text));
+            // Do not start listening from here.
+            // Start listening again after TTS engine is done with speaking.
+            //startListening();
+        }
+
+        @Override
+        public void onPartialResults(Bundle partialResults) {
+
+        }
+
+        @Override
+        public void onEvent(int eventType, Bundle params) {
+
         }
     }
 }
