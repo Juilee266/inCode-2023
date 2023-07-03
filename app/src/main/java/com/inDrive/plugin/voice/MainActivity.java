@@ -1,70 +1,65 @@
 package com.inDrive.plugin.voice;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
+import android.support.v4.content.ContextCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.TextView;
 
-import com.inDrive.plugin.common.servicebinding.ConcreteServiceConnection;
-import com.inDrive.plugin.navigation.NavigationService;
-import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
-import com.inDrive.plugin.utils.tts.TextToSpeechService;
+import com.inDrive.plugin.common.TextToSpeechProvider;
+import com.inDrive.plugin.services.LocationService;
+import com.inDrive.plugin.services.STTListenerService;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
-    private ConcreteServiceConnection<TextToSpeechService> textToSpeechServiceConnection = new ConcreteServiceConnection<>();
-    private ConcreteServiceConnection<NavigationService> navigationServiceConcreteServiceConnection = new ConcreteServiceConnection<>();
-
+    private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Get extra data included in the Intent
+            String message = intent.getStringExtra("message");
+            TextView tv= findViewById(R.id.dataFromSTT);
+            tv.setText("Data from STT service :"+message);
+        }
+    };
+    private BroadcastReceiver locationReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Get extra data included in the Intent
+            String message = intent.getStringExtra("message");
+            TextView tv= findViewById(R.id.dataFromLocation);
+            tv.setText("Data from Location service :"+message);
+        }
+    };
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // TODO: Ask for missing permissions
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
+        LocalBroadcastManager.getInstance(this).registerReceiver(speechToTextReceiver,
+                new IntentFilter("DATA_FROM_STT"));
+        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
+                new IntentFilter("DATA_FROM_LOCATION"));
     }
 
     @Override
     protected  void onStart() {
         super.onStart();
+        Intent sttServiceIntent = new Intent(this, STTListenerService.class);
+        sttServiceIntent.putExtra("inputExtra", "STT Service");
+        ContextCompat.startForegroundService(this, sttServiceIntent);
 
-        Intent intent = new Intent(this, TextToSpeechService.class);
-        startService(intent);
-        bindService(intent, textToSpeechServiceConnection, BIND_AUTO_CREATE);
-
-        Intent navigationServiceIntent = new Intent(this, NavigationService.class);
-        startService(navigationServiceIntent);
-        bindService(navigationServiceIntent, navigationServiceConcreteServiceConnection, BIND_AUTO_CREATE);
-
-        Log.d(TAG, "Activity Started.");
-
-        // TODO: Remove once finalized. :P
-        new Handler().postDelayed(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        if (textToSpeechServiceConnection.isBound()) {
-                            TextToSpeechService service = textToSpeechServiceConnection.getService();
-                            service.speak("Hello Juilee! Text to speech is working!");
-                            service.speak("It may need some adjustments as we move ahead " +
-                                            "with the implementation.");
-                            service.speak("Let me know if you find any problem with it.");
-                            service.speak("                                             ");
-                            service.speak("And yes, merge it to master if everything is okay.");
-
-                        }
-                    }
-                }, 2000);
-
-        new Handler().postDelayed(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        GraphhopperClient client = new GraphhopperClient();
-                        client.GetDirections();
-                    }
-                }, 2000
-        );
+        Intent locServiceIntent = new Intent(this, LocationService.class);
+        locServiceIntent.putExtra("inputExtra", "Location Service");
+        ContextCompat.startForegroundService(this, locServiceIntent);
     }
 
     @Override
@@ -88,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unbindService(textToSpeechServiceConnection);
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(speechToTextReceiver);
         Log.d(TAG, "Activity Destroyed.");
     }
 }

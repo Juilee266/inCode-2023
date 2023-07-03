@@ -6,6 +6,7 @@
     android:layout_height="match_parent"
     tools:context="com.inDrive.plugin.voice.MainActivity">
     <TextView
+        android:id="@+id/dataFromSTT"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Hello world"
@@ -13,5 +14,14 @@
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
+        />
+    <TextView
+        android:id="@+id/dataFromLocation"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Hello world"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/dataFromSTT"
         />
 </android.support.constraint.ConstraintLayout>
