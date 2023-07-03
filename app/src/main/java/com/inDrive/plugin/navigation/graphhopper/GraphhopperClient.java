@@ -5,16 +5,23 @@ import android.util.Log;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inDrive.plugin.common.httpclient.HttpClient;
 import com.inDrive.plugin.navigation.graphhopper.request.DirectionRequest;
+import com.inDrive.plugin.navigation.graphhopper.request.GeocodeRequest;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
+import com.inDrive.plugin.navigation.graphhopper.response.geocode.GeocodeResponse;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class GraphhopperClient {
+    private static final class GraphhopperClientHelper {
+        private static final GraphhopperClient INSTANCE = new GraphhopperClient();
+    }
+
     private HttpClient httpClient;
     private ExecutorService executorService;
     private ObjectMapper objectMapper;
@@ -23,13 +30,17 @@ public class GraphhopperClient {
     private static final String BASE_URL = "https://graphhopper.com/api/1";
     private static final String TAG = "GraphhopperClient";
 
-    public GraphhopperClient() {
+    private GraphhopperClient() {
         httpClient = HttpClient.getInstance();
         executorService = Executors.newSingleThreadExecutor();
         objectMapper = new ObjectMapper();
     }
 
-    public void GetDirections() {
+    public static GraphhopperClient getInstance() {
+        return GraphhopperClientHelper.INSTANCE;
+    }
+
+    public void getDirections() {
         String url = this.getUrl("route");
         DirectionRequest request = getDirectionRequest(List.of(List.of(73.8265, 18.553), List.of(73.8561, 18.5164)));
         try {
@@ -47,6 +58,32 @@ public class GraphhopperClient {
         }
     }
 
+    public Optional<GeocodeResponse> getGeocode(String place) {
+        String url = String.format(
+                "%s&%s",
+                this.getUrl("geocode"),
+                this.getGeocodeRequest(place)
+        );
+
+        try {
+            Future<GeocodeResponse> resultFuture = executorService.submit(new Callable<GeocodeResponse>() {
+                @Override
+                public GeocodeResponse call() throws Exception {
+                    String responseJson = httpClient.get(url);
+                    return objectMapper.readValue(responseJson, GeocodeResponse.class);
+                }
+            });
+            GeocodeResponse result = resultFuture.get();
+            Log.d(TAG, "Geocode Result: " + result);
+
+            return Optional.of(result);
+        } catch (Exception ex) {
+            Log.e(TAG, ex.toString());
+        }
+
+        return Optional.empty();
+    }
+
     private String getUrl(String api) {
         return String.format("%s/%s?key=%s", BASE_URL, api, API_KEY);
     }
@@ -62,6 +99,15 @@ public class GraphhopperClient {
         request.setCalcPoints(true);
         request.setPointsEncoded(false);
         request.setAlgorithm("alternative_route");
+        return request;
+    }
+
+    private GeocodeRequest getGeocodeRequest(String place) {
+        GeocodeRequest request = new GeocodeRequest();
+        request.setLimit(1);
+        request.setLocale("en");
+        request.setProvider("default");
+        request.setQuery(place);
         return request;
     }
 }

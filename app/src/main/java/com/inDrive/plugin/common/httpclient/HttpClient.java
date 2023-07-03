@@ -27,6 +27,38 @@ public class HttpClient {
         return HttpClientHelper.INSTANCE;
     }
 
+    public String get(String url) {
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+        Log.i(TAG, String.format("Initiating HTTP GET request %s", request));
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (response.isSuccessful()) return response.body().string();
+
+            Log.w(
+                    TAG,
+                    String.format(
+                            "HTTP GET request failed with status %d and reason %s. " +
+                            "URL: %s, Request: %s",
+                            response.code(),
+                            response.message(),
+                            url,
+                            request
+                    )
+            );
+        } catch (IOException ex) {
+            Log.e(
+                    TAG,
+                    String.format("Exception while sending HTTP POST request to url: %s and " +
+                            "request: %s", url, request)
+            );
+        }
+
+        return null;
+    }
+
     public String post(String url, String requestBody) {
         RequestBody body = RequestBody.create(requestBody, MEDIA_TYPE_JSON);
         Request request = new Request.Builder()
@@ -34,7 +66,7 @@ public class HttpClient {
                 .post(body)
                 .build();
 
-        Log.i(TAG, String.format("Initiating HTTP POST request with body %s", requestBody));
+        Log.i(TAG, String.format("Initiating HTTP POST request %s with body %s", request, request.body()));
         try (Response response = okHttpClient.newCall(request).execute()) {
             if (response.isSuccessful()) return response.body().string();
 

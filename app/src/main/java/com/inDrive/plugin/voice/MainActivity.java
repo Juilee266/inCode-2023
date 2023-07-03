@@ -13,6 +13,7 @@ import android.util.Log;
 import android.widget.TextView;
 
 import com.inDrive.plugin.common.TextToSpeechProvider;
+import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
 import com.inDrive.plugin.services.LocationService;
 import com.inDrive.plugin.services.STTListenerService;
 
@@ -37,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
             tv.setText("Data from Location service :"+message);
         }
     };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // TODO: Ask for missing permissions
@@ -48,11 +50,7 @@ public class MainActivity extends AppCompatActivity {
                 new IntentFilter("DATA_FROM_STT"));
         LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
                 new IntentFilter("DATA_FROM_LOCATION"));
-    }
 
-    @Override
-    protected  void onStart() {
-        super.onStart();
         Intent sttServiceIntent = new Intent(this, STTListenerService.class);
         sttServiceIntent.putExtra("inputExtra", "STT Service");
         ContextCompat.startForegroundService(this, sttServiceIntent);
@@ -60,6 +58,14 @@ public class MainActivity extends AppCompatActivity {
         Intent locServiceIntent = new Intent(this, LocationService.class);
         locServiceIntent.putExtra("inputExtra", "Location Service");
         ContextCompat.startForegroundService(this, locServiceIntent);
+
+        GraphhopperClient client = GraphhopperClient.getInstance();
+        client.getGeocode("Kasba Ganpati Mandir");
+    }
+
+    @Override
+    protected  void onStart() {
+        super.onStart();
     }
 
     @Override
