@@ -2,6 +2,8 @@ package com.inDrive.plugin.navigation.graphhopper.response.geocode;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
@@ -11,6 +13,8 @@ import lombok.ToString;
 @ToString
 public class Geocode {
     private Location point;
+
+    private List<Double> extent;
 
     private String name;
 

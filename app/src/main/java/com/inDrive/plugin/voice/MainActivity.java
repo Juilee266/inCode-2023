@@ -13,12 +13,16 @@ import android.util.Log;
 import android.widget.TextView;
 
 import com.inDrive.plugin.common.TextToSpeechProvider;
+import com.inDrive.plugin.navigation.NavigationProvider;
 import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
+import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
 import com.inDrive.plugin.services.LocationService;
 import com.inDrive.plugin.services.STTListenerService;
 
+import java.util.Optional;
+
 public class MainActivity extends AppCompatActivity {
-    private static final String TAG = "MainActivity";
+    private static final String TAG = "InDriveMainActivity";
 
     private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
         @Override
@@ -27,15 +31,6 @@ public class MainActivity extends AppCompatActivity {
             String message = intent.getStringExtra("message");
             TextView tv= findViewById(R.id.dataFromSTT);
             tv.setText("Data from STT service :"+message);
-        }
-    };
-    private BroadcastReceiver locationReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            // Get extra data included in the Intent
-            String message = intent.getStringExtra("message");
-            TextView tv= findViewById(R.id.dataFromLocation);
-            tv.setText("Data from Location service :"+message);
         }
     };
 
@@ -48,19 +43,15 @@ public class MainActivity extends AppCompatActivity {
         Log.d(TAG, "Activity Created.");
         LocalBroadcastManager.getInstance(this).registerReceiver(speechToTextReceiver,
                 new IntentFilter("DATA_FROM_STT"));
-        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
-                new IntentFilter("DATA_FROM_LOCATION"));
 
-        Intent sttServiceIntent = new Intent(this, STTListenerService.class);
-        sttServiceIntent.putExtra("inputExtra", "STT Service");
-        ContextCompat.startForegroundService(this, sttServiceIntent);
+        Intent sttListnerServiceIntent = new Intent(this, STTListenerService.class);
+        sttListnerServiceIntent.putExtra("inputExtra", "STT Service");
+        ContextCompat.startForegroundService(this, sttListnerServiceIntent);
 
-        Intent locServiceIntent = new Intent(this, LocationService.class);
-        locServiceIntent.putExtra("inputExtra", "Location Service");
-        ContextCompat.startForegroundService(this, locServiceIntent);
 
-        GraphhopperClient client = GraphhopperClient.getInstance();
-        client.getGeocode("Kasba Ganpati Mandir");
+        NavigationProvider navigationProvider = new NavigationProvider(this);
+        Optional<DirectionResponse> response = navigationProvider.getDirections("Kasba Ganpati", "Shivajinagar Railway Station");
+        Log.d(TAG, response.get().toString());
     }
 
     @Override

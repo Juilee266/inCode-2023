@@ -27,6 +27,9 @@ public class Instruction {
     @JsonProperty("street_name")
     private String streetName;
 
+    @JsonProperty("street_ref")
+    private String streetRef;
+
     @JsonProperty("exit_number")
     private int exitNumber;
 

@@ -40,9 +40,9 @@ public class GraphhopperClient {
         return GraphhopperClientHelper.INSTANCE;
     }
 
-    public void getDirections() {
+    public Optional<DirectionResponse> getDirections(List<List<Double>> locations) {
         String url = this.getUrl("route");
-        DirectionRequest request = getDirectionRequest(List.of(List.of(73.8265, 18.553), List.of(73.8561, 18.5164)));
+        DirectionRequest request = getDirectionRequest(locations);
         try {
             String body = objectMapper.writeValueAsString(request);
             Future<DirectionResponse> resultFuture = executorService.submit(new Callable<DirectionResponse>() {
@@ -52,10 +52,12 @@ public class GraphhopperClient {
                     return objectMapper.readValue(responseJson, DirectionResponse.class);
                 }
             });
-            DirectionResponse result = resultFuture.get();
+            return Optional.of(resultFuture.get());
         } catch (Exception ex) {
             Log.e(TAG, ex.toString());
         }
+
+        return Optional.empty();
     }
 
     public Optional<GeocodeResponse> getGeocode(String place) {
@@ -95,7 +97,7 @@ public class GraphhopperClient {
         request.setDetails(List.of("road_class", "surface"));
         request.setVehicle("bike");
         request.setLocale("en");
-        request.setInstructions(true);
+        request.setInstructions(false);
         request.setCalcPoints(true);
         request.setPointsEncoded(false);
         request.setAlgorithm("alternative_route");

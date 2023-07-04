@@ -33,26 +33,23 @@ public class HttpClient {
                 .get()
                 .build();
 
-        Log.i(TAG, String.format("Initiating HTTP GET request %s", request));
+        Log.i(TAG, String.format("Initiating HTTP GET request to URL %s", url));
         try (Response response = okHttpClient.newCall(request).execute()) {
             if (response.isSuccessful()) return response.body().string();
 
             Log.w(
                     TAG,
                     String.format(
-                            "HTTP GET request failed with status %d and reason %s. " +
-                            "URL: %s, Request: %s",
+                            "HTTP GET request failed with status %d and reason %s. URL: %s",
                             response.code(),
                             response.message(),
-                            url,
-                            request
+                            url
                     )
             );
         } catch (IOException ex) {
             Log.e(
                     TAG,
-                    String.format("Exception while sending HTTP POST request to url: %s and " +
-                            "request: %s", url, request)
+                    String.format("Exception while sending HTTP GET request to url: %s", url)
             );
         }
 
