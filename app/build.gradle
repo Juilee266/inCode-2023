@@ -38,4 +38,5 @@ dependencies {
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.0.1'      // JSON operations
     implementation 'com.squareup.okhttp3:okhttp:4.10.0'                     // HTTP
     implementation 'com.google.android.gms:play-services-location:15.0.1'   // Google Play Services Location
+    implementation group: 'org.apache.opennlp', name: 'opennlp-tools', version: '1.9.3'
 }

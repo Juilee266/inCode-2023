@@ -40,6 +40,8 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.RECORD_AUDIO
     };
     private static final int PERMISSION_REQUEST_CODE = 200;
+    private static final String TAG = "MainActivity";
+    private static Chatbot chatbot;
 
     private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
         @Override
@@ -72,6 +74,9 @@ public class MainActivity extends AppCompatActivity {
         NavigationProvider navigationProvider = new NavigationProvider(this);
         Optional<DirectionResponse> response = navigationProvider.getDirections("Kasba Ganpati", "Shivajinagar Railway Station");
         Log.d(TAG, response.get().toString());
+        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
+                new IntentFilter("DATA_FROM_LOCATION"));
+        chatbot = new Chatbot(this);
     }
 
     @Override
