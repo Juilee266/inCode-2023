@@ -18,6 +18,7 @@ import com.inDrive.plugin.services.STTListenerService;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
+    private static Chatbot chatbot;
 
     private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
         @Override
@@ -48,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
                 new IntentFilter("DATA_FROM_STT"));
         LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
                 new IntentFilter("DATA_FROM_LOCATION"));
+        chatbot = new Chatbot(this);
     }
 
     @Override
