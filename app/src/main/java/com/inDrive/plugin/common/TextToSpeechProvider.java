@@ -1,20 +1,19 @@
 package com.inDrive.plugin.common;
 
 import android.content.Context;
-import android.content.Intent;
-import android.os.Handler;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
-import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
-import com.inDrive.plugin.common.servicebinding.ConcreteServiceConnection;
-import com.inDrive.plugin.common.servicebinding.ServiceBinder;
-import com.inDrive.plugin.services.STTListenerService;
-
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import lombok.Getter;
 
 public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
     private static final String TAG = "TextToSpeechProvider";
@@ -23,10 +22,17 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
 
     private TextToSpeech textToSpeech;
     private Context context;
+    private AtomicBoolean isOkayToSpeak;
+    private ExecutorService executorService;
+    private SpeechToTextProvider speechToTextProvider;
+    private List<ActionListenerCallback> actionListenerCallbacks;
 
     private TextToSpeechProvider(Context context) {
         this.context = context;
+        executorService = Executors.newSingleThreadExecutor();
         textToSpeech = new TextToSpeech(context, this);
+        actionListenerCallbacks = new ArrayList<>();
+        isOkayToSpeak = new AtomicBoolean(false);
 
         Log.i(TAG, "Successfully initialized text to speech provider.");
     }
@@ -41,6 +47,15 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
         }
 
         return instance;
+    }
+
+    public void setSpeechToTextProvider(SpeechToTextProvider speechToTextProvider) {
+        this.speechToTextProvider = speechToTextProvider;
+        this.speechToTextProvider.registerActionListenerCallback(new SpeechToTextActionCallback());
+    }
+
+    public void registerActionListenerCallback(ActionListenerCallback callback) {
+        actionListenerCallbacks.add(callback);
     }
 
     @Override
@@ -60,35 +75,33 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
             throw new RuntimeException(message);
         }
 
-        textToSpeech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-            @Override
-            public void onStart(String utteranceId) {
-            }
+        textToSpeech.setOnUtteranceProgressListener(new UtteranceListenerCallback());
 
-            @Override
-            public void onDone(String utteranceId) {
-                LocalBroadcastManager.getInstance(context).sendBroadcast(getSTTCommandIntent(false));
-            }
-
-            @Override
-            public void onError(String utteranceId) {
-                LocalBroadcastManager.getInstance(context).sendBroadcast(getSTTCommandIntent(false));
-            }
-        });
-
+        isOkayToSpeak.set(true);
         Log.i(TAG, "Successfully initialized text to speech with locale en-US.");
-    }
 
-    public void speak(String text) {
-        try {
-            LocalBroadcastManager.getInstance(context).sendBroadcast(getSTTCommandIntent(true));
-            textToSpeech.speak(text, TextToSpeech.QUEUE_ADD, null, "InCode TTS");
-        } catch (Exception ex) {
-            Log.e(TAG, String.format("Error while converting text (%s) to speech.", text), ex);
+        for (ActionListenerCallback callback : actionListenerCallbacks) {
+            callback.onInitialized();
         }
     }
 
+    public void speak(String text) {
+        executorService.submit(() -> {
+            try {
+                while (!isOkayToSpeak.get()) Thread.sleep(100);
+
+                for (ActionListenerCallback callback : actionListenerCallbacks)
+                    callback.onActionStarted();
+
+                textToSpeech.speak(text, TextToSpeech.QUEUE_ADD, null, "InCode TTS");
+            } catch (Exception ex) {
+                Log.e(TAG, String.format("Error while converting text (%s) to speech.", text), ex);
+            }
+        });
+    }
+
     public void dispose() {
+        executorService.shutdown();
         if (textToSpeech != null) {
             textToSpeech.stop();
             textToSpeech.shutdown();
@@ -97,9 +110,45 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
         Log.i(TAG, "Successfully disposed text to speech provider.");
     }
 
-    private Intent getSTTCommandIntent(boolean stop) {
-        Intent intent = new Intent("STT_COMMANDS");
-        intent.putExtra("message", stop ? "STOP_LISTENING" : "START_LISTENING");
-        return intent;
+    private class SpeechToTextActionCallback implements ActionListenerCallback {
+
+        @Override
+        public void onInitialized() {
+
+        }
+
+        @Override
+        public void onActionStarted() {
+            isOkayToSpeak.set(false);
+        }
+
+        @Override
+        public void onActionCompleted(Map<String, Object> resultMap) {
+            isOkayToSpeak.set(true);
+        }
+
+        @Override
+        public void onActionFailed() {
+            isOkayToSpeak.set(true);
+        }
+    }
+
+    private class UtteranceListenerCallback extends UtteranceProgressListener {
+
+        @Override
+        public void onStart(String utteranceId) {
+        }
+
+        @Override
+        public void onDone(String utteranceId) {
+            for (ActionListenerCallback callback : actionListenerCallbacks)
+                callback.onActionCompleted(null);
+        }
+
+        @Override
+        public void onError(String utteranceId) {
+            for (ActionListenerCallback callback : actionListenerCallbacks)
+                callback.onActionFailed();
+        }
     }
 }

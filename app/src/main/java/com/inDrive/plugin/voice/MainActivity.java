@@ -8,6 +8,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
+import android.speech.tts.TextToSpeech;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.content.LocalBroadcastManager;
@@ -16,7 +17,10 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
 
+import com.inDrive.plugin.common.ActionListenerCallback;
+import com.inDrive.plugin.common.SpeechToTextProvider;
 import com.inDrive.plugin.common.TextToSpeechProvider;
+import com.inDrive.plugin.entities.Passenger;
 import com.inDrive.plugin.navigation.NavigationProvider;
 import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
@@ -26,6 +30,7 @@ import com.inDrive.plugin.services.STTListenerService;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class MainActivity extends AppCompatActivity {
@@ -36,47 +41,32 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-            Manifest.permission.FOREGROUND_SERVICE,
             Manifest.permission.RECORD_AUDIO
     };
     private static final int PERMISSION_REQUEST_CODE = 200;
-    private static final String TAG = "MainActivity";
-    private static Chatbot chatbot;
+    private Chatbot chatbot;
 
-    private BroadcastReceiver speechToTextReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            // Get extra data included in the Intent
-            String message = intent.getStringExtra("message");
-            TextView tv= findViewById(R.id.dataFromSTT);
-            tv.setText("Data from STT service :"+message);
-        }
-    };
+    private volatile SpeechToTextProvider speechToTextProvider;
+    private volatile TextToSpeechProvider textToSpeechProvider;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // TODO: Ask for missing permissions
-
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
 
         checkMissingPermissions();
 
-        LocalBroadcastManager.getInstance(this).registerReceiver(speechToTextReceiver,
-                new IntentFilter("DATA_FROM_STT"));
-
-        Intent sttListnerServiceIntent = new Intent(this, STTListenerService.class);
-        sttListnerServiceIntent.putExtra("inputExtra", "STT Service");
-        ContextCompat.startForegroundService(this, sttListnerServiceIntent);
-
+        speechToTextProvider = SpeechToTextProvider.getInstance(this);
+        textToSpeechProvider = TextToSpeechProvider.getInstance(this);
+        textToSpeechProvider.setSpeechToTextProvider(speechToTextProvider);
+        speechToTextProvider.setTextToSpeechProvider(textToSpeechProvider);
+        speechToTextProvider.registerActionListenerCallback(new SpeechToTextActionListener());
+        textToSpeechProvider.registerActionListenerCallback(new TextToSpeechActionListener());
 
         NavigationProvider navigationProvider = new NavigationProvider(this);
         Optional<DirectionResponse> response = navigationProvider.getDirections("Kasba Ganpati", "Shivajinagar Railway Station");
         Log.d(TAG, response.get().toString());
-        LocalBroadcastManager.getInstance(this).registerReceiver(locationReceiver,
-                new IntentFilter("DATA_FROM_LOCATION"));
-        chatbot = new Chatbot(this);
     }
 
     @Override
@@ -105,7 +95,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(speechToTextReceiver);
         Log.d(TAG, "Activity Destroyed.");
     }
 
@@ -117,12 +106,64 @@ public class MainActivity extends AppCompatActivity {
             missingPermissions.add(permission);
         }
 
-b        if (missingPermissions.isEmpty())
+        if (missingPermissions.isEmpty())
             return;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             requestPermissions(missingPermissions.toArray(new String[0]), PERMISSION_REQUEST_CODE);
         else
             ActivityCompat.requestPermissions(this, missingPermissions.toArray(new String[0]), PERMISSION_REQUEST_CODE);
+    }
+
+    private class TextToSpeechActionListener implements ActionListenerCallback {
+
+        @Override
+        public void onInitialized() {
+            new Thread(() -> textToSpeechProvider.speak("Hello Juilee! I hope this will keep working as expected. " +
+                    "Please refer MainActivity to check how to use callbacks. And yes, do not start any listening or speaking " +
+                    "until TTS is fully initialized. Otherwise we will run into sync issues. Now say something nice after the beep. " +
+                    "PS - No need to call speak method of text to speech provider in a thread. " +
+                    "Abhishek just did it to test concurrent executions. You may speak now.")).start();
+            // Adding delay to make sure TTS starts speaking before STT starts listening
+            new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+        }
+
+        @Override
+        public void onActionStarted() {
+
+        }
+
+        @Override
+        public void onActionCompleted(Map<String, Object> resultMap) {
+
+        }
+
+        @Override
+        public void onActionFailed() {
+
+        }
+    }
+
+    private class SpeechToTextActionListener implements ActionListenerCallback {
+
+        @Override
+        public void onInitialized() {
+
+        }
+
+        @Override
+        public void onActionStarted() {
+
+        }
+
+        @Override
+        public void onActionCompleted(Map<String, Object> resultMap) {
+            textToSpeechProvider.speak("Dude, that guy wrote a long message and all you said is - " + (String)resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT));
+        }
+
+        @Override
+        public void onActionFailed() {
+            textToSpeechProvider.speak("Wow! I expected you to speak.");
+        }
     }
 }
