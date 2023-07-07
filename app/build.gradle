@@ -31,5 +31,12 @@ dependencies {
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-    implementation group: 'org.apache.opennlp', name: 'opennlp-tools', version: '1.9.3'
+
+    // Added Dependencies
+    compileOnly 'org.projectlombok:lombok:1.18.22'                          // Lombok
+    annotationProcessor 'org.projectlombok:lombok:1.18.22'                  // Lombok
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.0.1'      // JSON operations
+    implementation 'com.squareup.okhttp3:okhttp:4.10.0'                     // HTTP
+    implementation 'com.google.android.gms:play-services-location:15.0.1'   // Google Play Services Location
+    implementation 'org.apache.opennlp:opennlp-tools:1.9.3'                 // OpenNLP
 }
