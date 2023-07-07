@@ -1,34 +1,27 @@
 package com.inDrive.plugin.voice;
 
 import android.Manifest;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
-import android.os.Handler;
-import android.speech.tts.TextToSpeech;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
-import android.support.v4.content.LocalBroadcastManager;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.os.Handler;
+import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.util.Log;
-import android.widget.TextView;
 
 import com.inDrive.plugin.common.ActionListenerCallback;
 import com.inDrive.plugin.common.SpeechToTextProvider;
 import com.inDrive.plugin.common.TextToSpeechProvider;
 import com.inDrive.plugin.entities.Passenger;
 import com.inDrive.plugin.navigation.NavigationProvider;
-import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
-import com.inDrive.plugin.services.LocationService;
-import com.inDrive.plugin.services.STTListenerService;
+import com.inDrive.plugin.ui.chat.MessageListAdapter;
+import com.inDrive.plugin.ui.chat.model.Message;
+import com.inDrive.plugin.ui.chat.model.Sender;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,11 +42,19 @@ public class MainActivity extends AppCompatActivity {
     private volatile SpeechToTextProvider speechToTextProvider;
     private volatile TextToSpeechProvider textToSpeechProvider;
 
+    private RecyclerView recyclerView;
+    private MessageListAdapter messageListAdapter;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
+
+        recyclerView = (RecyclerView) findViewById(R.id.recycler_chat);
+        messageListAdapter = new MessageListAdapter(this, new ArrayList<>());
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(messageListAdapter);
 
         Passenger p = new Passenger("JJ", "123456");
         try {
@@ -122,17 +123,22 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, missingPermissions.toArray(new String[0]), PERMISSION_REQUEST_CODE);
     }
 
+    private void addMessageToRecyclerView(Message message) {
+        if (message == null) return;
+
+        messageListAdapter.addMessage(message);
+        recyclerView.scrollToPosition(messageListAdapter.getItemCount() - 1);
+    }
+
     private class TextToSpeechActionListener implements ActionListenerCallback {
 
         @Override
         public void onInitialized() {
-            new Thread(() -> textToSpeechProvider.speak("Hello there Abhishek! Please don't startle my poor code. Just say - Book a cab from London to Manchester.")).start();
-//            I hope this will keep working as expected. " +
-//                    "Please refer MainActivity to check how to use callbacks. And yes, do not start any listening or speaking " +
-//                    "until TTS is fully initialized. Otherwise we will run into sync issues. Now say something nice after the beep. " +
-//                    "PS - No need to call speak method of text to speech provider in a thread. " +
-//                    "Abhishek just did it to test concurrent executions. You may speak now.")).start();
-            // Adding delay to make sure TTS starts speaking before STT starts listening
+            String text = "Hello Juilee! Have a look at this chat UI. I took the liberty to change " +
+                    "the app theme a little bit. Let me know how it looks. And yes, your code is not " +
+                    "poor. What you have done in merely a week is astonishing.";
+            addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
+            new Thread(() -> textToSpeechProvider.speak(text)).start();
             new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
 
@@ -167,7 +173,12 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onActionCompleted(Map<String, Object> resultMap) {
             try {
-                String ans = chatbot.getResponse((String) resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT));
+                String inferredText = (String) resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT);
+                addMessageToRecyclerView(new Message(inferredText, Sender.USER));
+
+                String ans = chatbot.getResponse(inferredText);
+                addMessageToRecyclerView(new Message(ans, Sender.SYSTEM));
+
                 new Thread(() -> textToSpeechProvider.speak(ans)).start();
                 new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
 
@@ -180,7 +191,10 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onActionFailed() {
-            new Thread(() -> textToSpeechProvider.speak("Did you say something?")).start();
+            String text = "Did you say something?";
+            addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
+
+            new Thread(() -> textToSpeechProvider.speak(text)).start();
             new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
     }
