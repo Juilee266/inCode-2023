@@ -7,13 +7,18 @@ public class Ride {
     private Location destination;
     private int timeInMinutesForDriver;
     private int timeInMinutesToReachDest;
-    private String rideStatus;
+    private String rideStatus; //BOOKED, NOT_BOOKED, NOT_STARTED, STARTED, DRIVER_ARRIVED
 
     public Ride(Passenger passenger, Driver driver, Location source, Location destination) {
         this.passenger = passenger;
         this.driver = driver;
         this.source = source;
         this.destination = destination;
+    }
+
+    public Ride(Passenger passenger) {
+        this.passenger = passenger;
+        rideStatus = "NOT_BOOKED";
     }
 
     public Passenger getPassenger() {

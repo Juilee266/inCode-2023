@@ -55,6 +55,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
 
+        Passenger p = new Passenger("JJ", "123456");
+        try {
+            chatbot = new Chatbot(this, p);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         checkMissingPermissions();
 
         speechToTextProvider = SpeechToTextProvider.getInstance(this);
@@ -119,11 +126,12 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onInitialized() {
-            new Thread(() -> textToSpeechProvider.speak("Hello Juilee! I hope this will keep working as expected. " +
-                    "Please refer MainActivity to check how to use callbacks. And yes, do not start any listening or speaking " +
-                    "until TTS is fully initialized. Otherwise we will run into sync issues. Now say something nice after the beep. " +
-                    "PS - No need to call speak method of text to speech provider in a thread. " +
-                    "Abhishek just did it to test concurrent executions. You may speak now.")).start();
+            new Thread(() -> textToSpeechProvider.speak("Hello there Abhishek! Please don't startle my poor code. Just say - Book a cab from London to Manchester.")).start();
+//            I hope this will keep working as expected. " +
+//                    "Please refer MainActivity to check how to use callbacks. And yes, do not start any listening or speaking " +
+//                    "until TTS is fully initialized. Otherwise we will run into sync issues. Now say something nice after the beep. " +
+//                    "PS - No need to call speak method of text to speech provider in a thread. " +
+//                    "Abhishek just did it to test concurrent executions. You may speak now.")).start();
             // Adding delay to make sure TTS starts speaking before STT starts listening
             new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
@@ -158,12 +166,22 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onActionCompleted(Map<String, Object> resultMap) {
-            textToSpeechProvider.speak("Dude, that guy wrote a long message and all you said is - " + (String)resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT));
+            try {
+                String ans = chatbot.getResponse((String) resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT));
+                new Thread(() -> textToSpeechProvider.speak(ans)).start();
+                new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+
+            }
+            catch (Exception e) {
+                Log.e("Error", e.getLocalizedMessage());
+            }
+
         }
 
         @Override
         public void onActionFailed() {
-            textToSpeechProvider.speak("Wow! I expected you to speak.");
+            new Thread(() -> textToSpeechProvider.speak("Did you say something?")).start();
+            new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
     }
 }

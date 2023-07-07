@@ -13,8 +13,12 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Objects;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import opennlp.tools.doccat.BagOfWordsFeatureGenerator;
@@ -33,21 +37,15 @@ import opennlp.tools.sentdetect.SentenceModel;
 import opennlp.tools.tokenize.TokenizerME;
 import opennlp.tools.tokenize.TokenizerModel;
 import opennlp.tools.util.InputStreamFactory;
-import opennlp.tools.util.InvalidFormatException;
 import opennlp.tools.util.ObjectStream;
 import opennlp.tools.util.PlainTextByLineStream;
 import opennlp.tools.util.TrainingParameters;
 import opennlp.tools.util.model.ModelUtil;
 
 public class Chatbot {
-
-    private Context context;
-    private Passenger passenger;
-    private Ride ride;
-    private Location pickupPoint;
-    private Location DropPoint;
-
-    private String status = "NOT_BOOKED";
+    enum Question {
+        NULL, GREETING, CONFIRM_SRC_DEST, USE_CURRENT_LOCATION, SPECIFY_DEST, CONFIRM_DEST, UPDATE_DEST_QUESTION, SPECIFY_SOURCE, CONFIRM_SOURCE, SURE_CANCEL, UPDATE_SOURCE_QUESTION
+    }
     static final String GREETING = "greeting";
     static final String BOOK_CAB_INSTR = "book_cab_instruction";
     static final String LOCATION_INQUIRY = "location_inquiry";
@@ -63,35 +61,75 @@ public class Chatbot {
     static final String RATING = "stars";
     static final String AFFIRMATION = "affirmation";
     static final String NEGATION = "negation";
-
+    static final String CALL_DRIVER = "call_driver";
     static final String STOP_PROCESS = "stop_process";
     static final String CANCEL_RIDE = "cancel_ride";
+    private Context context;
 
+    private Location source;
+    private Location dest;
+
+    private Ride ride;
+    private Question last_question;
     private DoccatModel model;
-
-
     static DocumentCategorizerME myDocCategorizer;
     static SentenceDetectorME mySenCategorizer;
     static TokenizerME tokenizer;
     static POSTaggerME myPOSCategorizer;
     static LemmatizerME myLemCategorizer;
 
-    public Chatbot(Context context, Passenger passenger) {
+    private List<String> properNouns;
+    private String[] tokens;
+    private ExecutorService executorService = Executors.newFixedThreadPool(5);
+
+    public Chatbot(Context context, Passenger passenger) throws InterruptedException {
+        this.context = context;
+        last_question = Question.NULL;
+        ride = new Ride(passenger);
+        System.setProperty("org.xml.sax.driver", "org.xmlpull.v1.sax2.Driver");
         try {
-            System.setProperty("org.xml.sax.driver", "org.xmlpull.v1.sax2.Driver");
-
-            this.context = context;
             model = trainCategorizerModel();
-            initializeSentenceModel();
-            initializeDocumentCategorizer();
-            initializePOSModel();
-            initializeTokenizerModel();
-            initializeLemmatizer();
-
         } catch (IOException e) {
-            Log.e("ChatbotFragment", Arrays.toString(e.getStackTrace()));
             throw new RuntimeException(e);
         }
+        executorService.submit(() -> {
+            try {
+                initializeSentenceModel();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.submit(() -> {
+            try {
+                initializeDocumentCategorizer();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.submit(() -> {
+            try {
+                initializePOSModel();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.submit(() -> {
+            try {
+                initializeTokenizerModel();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.submit(() -> {
+            try {
+                initializeLemmatizer();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+        executorService.shutdown();
+        while (!executorService.awaitTermination(100, TimeUnit.MILLISECONDS)) {}
+        Log.i("FINISHED ", "threads finished execution");
     }
 
     private void initializeSentenceModel() throws IOException {
@@ -159,7 +197,10 @@ public class Chatbot {
         myDocCategorizer = new DocumentCategorizerME(model);
     }
 
-    private String getResponse(String input) throws IOException {
+    public String getResponse(String input) throws IOException {
+        if(myDocCategorizer == null || tokenizer ==null || myLemCategorizer == null || myPOSCategorizer ==null || mySenCategorizer == null) {
+            return " ";
+        }
         // Break users chat input into sentences using sentence detection.
         String[] sentences = breakSentences(input);
         String answer = "";
@@ -169,11 +210,21 @@ public class Chatbot {
         for (String sentence : sentences) {
 
             // Separate words from each sentence using tokenizer.
-            String[] tokens = tokenizeSentence(sentence);
+            tokens = tokenizeSentence(sentence);
 
             // Tag separated words with POS tags to understand their gramatical structure.
             String[] posTags = detectPOSTags(tokens);
 
+            properNouns = new ArrayList<>();// = Arrays.stream(tokens).filter((s) -> posTags[i]=="NNP").toArray(String[]::new);
+
+            for(int i=0; i<tokens.length; i++) {
+                if(posTags[i].equals("NNP")) {
+                    properNouns.add(tokens[i].toLowerCase());
+                }
+                if(tokens.length <= 2 && posTags[i].equals("NN")) {
+                    properNouns.add(tokens[i].toLowerCase());
+                }
+            }
             // Lemmatize each word so that its easy to categorize.
             String[] lemmas = lemmatizeTokens(tokens, posTags);
 
@@ -188,7 +239,6 @@ public class Chatbot {
             if ("conversation-complete".equals(category)) {
                 conversationComplete = true;
             }
-
         }
 
         return answer;
@@ -321,242 +371,301 @@ public class Chatbot {
     }
 
     public String processInstruction(String category, String instruction) {
+        Log.i("INSTR TYPE ", last_question.toString());
+        String response = "";
+
+        if(last_question == Question.SPECIFY_DEST || last_question == Question.UPDATE_DEST_QUESTION) {
+            dest = fetchLocationFromText(instruction);
+            if(dest != null) {
+                last_question = Question.CONFIRM_DEST;
+                return "Are you sure you want to change the destination to "+dest.getLocationName()+"?";
+            }
+        }
+        if(last_question == Question.SPECIFY_SOURCE  || last_question == Question.UPDATE_SOURCE_QUESTION) {
+            source = fetchLocationFromText(instruction);
+            if(source != null) {
+                last_question = Question.CONFIRM_SOURCE;
+                return "Are you sure you want to change the pickup to "+source.getLocationName()+"?";
+            }
+        }
+
         switch(category) {
             case GREETING:
-                return "Hey there! How can I help you?";
+                response = "Hey there! How can I help you?";
+                last_question = Question.GREETING;
+                break;
             case BOOK_CAB_INSTR:
-                return processBookCabCommand(instruction);
+                response =  processBookCabCommand(instruction);
+                break;
             case LOCATION_INQUIRY:
-                return processLocationInquiry();
+                response =  processLocationInquiry();
+                break;
             case DRIVER_INQUIRY :
-                return processDriverInquiry();
+                response =  processDriverInquiry();
+                break;
             case VEHICLE_INQUIRY :
-                return processVehicleInquiry();
+                response =  processVehicleInquiry();
+                break;
             case TIME_FOR_DRIVER :
+                if(ride.getRideStatus() == "BOOKED") {
+                    response = ride.getDriver().getDriverName()+ " will arrive in "+ride.getTimeInMinutesForDriver()+" minutes.";
+                }
+                else if(ride.getRideStatus() == "DRIVER_ARRIVED"){
+                    response = ride.getDriver().getDriverName()+" has arrived at the pickup.";
+                }
+                else response = "";
                 break;
             case TIME_TO_REACH:
+                if(ride.getRideStatus() != "NOT_BOOKED") {
+                    response = "You will reach the destination in "+ride.getTimeInMinutesToReachDest()+" minutes.";
+                }
+                else response = "";
                 break;
             case CHANGE_SOURCE :
-                return processChangeSource(instruction);
+                response = processChangeSource(instruction);
+                break;
             case CHANGE_DESTINATION :
-                return processChangeDestination(instruction);
+                response = processChangeDestination(instruction);
+                break;
             case OTP_INQUIRY :
+                response = "Your OTP is One Two Three Four.";
                 break;
             case START_RIDE:
+                ride.setRideStatus("STARTED");
+                response = "Ride started. Enjoy your journey!";
                 break;
             case ALL_GOOD :
+                response = "Okay";
                 break;
             case RATING :
+                ride.getDriver().setStars(fetchRatingFromString(instruction));
+                response = "Thanks";
                 break;
             case AFFIRMATION:
+                if(last_question.equals(Question.CONFIRM_SRC_DEST)) {
+                    ride.setSource(source);
+                    ride.setDestination(dest);
+                    if(ride.getRideStatus() == "NOT_BOOKED")
+                    {
+                        response = bookRide();
+                    }
+                    else {
+                        response = "Pick up and drop locations updated.";
+                    }
+                }
+                else if(last_question == Question.UPDATE_DEST_QUESTION) {
+                    last_question = Question.SPECIFY_DEST;
+                    response = "Please specify the updated destination";
+                }
+                else if(last_question == Question.UPDATE_SOURCE_QUESTION) {
+                    last_question = Question.SPECIFY_SOURCE;
+                    response = "Please specify the updated pickup";
+                }
+                else if(last_question == Question.CONFIRM_DEST) {
+                    ride.setDestination(dest);
+                    textToSpeech("Successfully updated destination to "+ dest.getLocationName());
+                    response = confirmSourceAndDest();
+                }
+                else if(last_question == Question.CONFIRM_SOURCE) {
+                    ride.setDestination(dest);
+                    textToSpeech("Successfully updated pickup to "+ source.getLocationName());
+                    response = confirmSourceAndDest();
+                }
+                else if(last_question.equals(Question.USE_CURRENT_LOCATION)) {
+                    source = getCurrentLocation();
+                    textToSpeech("Successfully updated pickup to "+ source.getLocationName());
+                    response = confirmSourceAndDest();
+                }
+                else if(last_question.equals(Question.SURE_CANCEL)) {
+                    response = cancelRide();
+                }
                 break;
             case NEGATION:
+                if(last_question.equals(Question.CONFIRM_SRC_DEST)) {
+                    last_question = Question.UPDATE_DEST_QUESTION;
+                    if(dest != null) {
+                        response = "Do you want to update the destination from " + dest.getLocationName();
+                    }
+                    else {
+                        response = "Do you want to update the destination?";
+                    }
+                }
+                else if(last_question == Question.UPDATE_DEST_QUESTION) {
+                    last_question = Question.UPDATE_SOURCE_QUESTION;
+                    if(source != null) {
+                        response = "Do you want to update the pickup from " + source.getLocationName();
+                    }
+                    else {
+                        response = "Do you want to update the pickup?";
+                    }
+                }
+                else if(last_question == Question.UPDATE_SOURCE_QUESTION) {
+                    response = confirmSourceAndDest();
+                }
+                else if(last_question == Question.CONFIRM_DEST) {
+                    ride.setDestination(dest);
+                    textToSpeech("Successfully updated destination to "+ dest.getLocationName());
+                    response = confirmSourceAndDest();
+                }
+                else if(last_question == Question.CONFIRM_SOURCE) {
+                    ride.setDestination(dest);
+                    textToSpeech("Successfully updated pickup to "+ dest.getLocationName());
+                    response = confirmSourceAndDest();
+                }
                 break;
             case CANCEL_RIDE:
+                response = "Are you sure you want to cancel the ride?";
+                last_question = Question.SURE_CANCEL;
+                break;
+            case CALL_DRIVER:
+                response = callDriver();
+                break;
+            case STOP_PROCESS:
+                break;
+            default:
+                response = "Sorry. Could you repeat?";
                 break;
 
         }
-        return "Sorry. Could you repeat?";
+        return response;
     }
 
-    private String processChangeDestination(String instruction) {
-        askQuestion("Are you sure you want to change the drop location?");
-        String ans = listenForAnswer();
-        String category = getCategory(ans);
-        Location dest = null;
-
-        if(category == AFFIRMATION) {
-            while(dest == null) {
-                askQuestion("Please specify the drop location");
-                ans = listenForAnswer();
-                dest = fetchDropLocationFromInstr(ans);
-                if (dest == null) {
-                    dest = getDroppingPtFromUser();
-                    if (dest == null) {
-                        return "okay";
-                    }
-                }
-            }
-        }
-        else {
-            return "okay";
-        }
-        ride.setDestination(dest);
-        return "Changed the destination to "+dest.getLocationName();
-    }
-
-    private String processChangeSource(String instruction) {
-        askQuestion("Are you sure you want to change the pickup?");
-        String ans = listenForAnswer();
-        String category = getCategory(ans);
-        Location source = null;
-
-        if(category == AFFIRMATION) {
-            while(source == null) {
-                askQuestion("Please specify the pickup");
-                ans = listenForAnswer();
-                source = fetchSourceLocationFromInstr(ans);
-                if (source == null) {
-                    source = getPickupFromUser();
-                    if (source == null) {
-                        return "okay";
-                    }
-                }
-            }
-        }
-        ride.setSource(source);
-        return "Changed the pickup to "+source.getLocationName();
-    }
-
-    private String processVehicleInquiry() {
-        return "The cab is a white swift desire with number MH12 1234";
-    }
-
-    private String processDriverInquiry() {
-        return "Driver's name is Ganesh. He has a 4.5 stars rating.";
-    }
-
-    private String processLocationInquiry() {
-        return "We are currently at "+getCurrentLocation().getLocationName()+". Time to reach destination is 10 minutes.";
-    }
-
-    private String processBookCabCommand(String instruction) {
-        Location source = fetchSourceLocationFromInstr(instruction);
-        Location dest = fetchDropLocationFromInstr(instruction);
-
-        if(source == null) {
-            source = getPickupFromUser();
-            if(source == null) {
-                return "okay";
-            }
-        }
-        if(dest == null) {
-            dest = getDroppingPtFromUser();
-            if(dest == null) {
-                return "okay";
-            }
-        }
-        return confirmSourceAndDest(source, dest);
+    private String callDriver() {
+        return "calling driver at " + ride.getDriver().getDriverContact();
 
     }
 
-    private String confirmSourceAndDest(Location source, Location dest) {
-        String ans, category;
-        if(source!=null && dest!=null) {
-            askQuestion("Request to book a cab from "+source+" to "+dest+" received. Say yes to search for nearby rides.");
-            ans = listenForAnswer();
-            category = getCategory(ans);
-            if(category == AFFIRMATION) {
-                askQuestion("Looking for nearby drivers");
-                // TODO: call a function to start looking for nearby drivers;
-                bookRide(source, dest);
-                if(ride.getRideStatus() == "BOOKED") {
-                    status = ride.getRideStatus();
-                    return ride.getDriver().getDriverName()+" has accepted your ride request. They are arriving in "+ride.getTimeInMinutesForDriver()+" minutes";
-                }
-                else return "Sorry. No rides are available.";
-            }
-            else if(category == STOP_PROCESS || category == CANCEL_RIDE) {
-                return "Okay";
-            }
-            else if(category == NEGATION) {
-               askQuestion("Do you want to update the destination?");
-               ans = listenForAnswer();
-               category = getCategory(ans);
-               if(category == NEGATION) {
-                   askQuestion("Do you want to update the pickup?");
-                   ans = listenForAnswer();
-                   category = getCategory(ans);
-                   if(category == NEGATION) {
-                       confirmSourceAndDest(source, dest);
-                   }
-               }
-               else {
-                   processChangeDestination(ans);
-               }
-            }
-            else {
-                return "Sorry, didn't get you.";
-            }
-        }
-        return "";
+    private String cancelRide() {
+        ride.setDriver(null);
+        ride.setSource(null);
+        ride.setDestination(null);
+        ride.setTimeInMinutesToReachDest(0);
+        ride.setTimeInMinutesForDriver(0);
+        ride.setRideStatus("NOT_BOOKED");
+        return "Ride cancelled successfully.";
     }
 
-    private Location getPickupFromUser() {
-        Location source = null;
-        String ans, category;
-        while(source == null) {
-            askQuestion("Do you want to use your current location as the pickup?");
-            ans = listenForAnswer();
-            category = getCategory(ans);
-            if(category.equals(STOP_PROCESS) || category == CANCEL_RIDE) {
-                return null;
-            }
-            if(category == AFFIRMATION) {
-                source = getCurrentLocation();
-            }
-            else {
-                if(Objects.equals(category, NEGATION)) {
-                    askQuestion("Please specify the pickup location to continue.");
-                    ans = listenForAnswer();
-                    category = getCategory(ans);
-                    if(category == STOP_PROCESS || category == CANCEL_RIDE) {
-                        return null;
-                    }
-                }
-                source = fetchSourceLocationFromInstr(ans);
-            }
-        }
-        return source;
-    }
-
-    private Location getDroppingPtFromUser() {
-        Location dest = null;
-        String ans, category;
-        while(dest == null) {
-            askQuestion("Please specify the destination to continue.");
-            ans = listenForAnswer();
-            category = getCategory(ans);
-            if(category == STOP_PROCESS || category == CANCEL_RIDE) {
-                return null;
-            }
-            dest = fetchSourceLocationFromInstr(ans);
-        }
-        return dest;
-    }
-    private void bookRide(Location source, Location dest) {
-        Vehicle v = new Vehicle("MH12-1234", "Mini", "Celerio");
-        Driver d = new Driver("Dilip", v, "12334433", 4);
-        ride = new Ride(passenger, d, source, dest);
-        ride.setRideStatus("BOOKED");
-    }
-    private String getCategory(String ans) {
-        return AFFIRMATION;
+    private int fetchRatingFromString(String instruction) {
+        return 4;
     }
 
     private Location getCurrentLocation() {
-        return new Location("Hadapsar,Pune", "hdp");
+        return new Location("", "");
     }
 
-    private void askQuestion(String question) {
-        //TTS call
+    private void textToSpeech(String s) {
     }
 
-    private String listenForAnswer() {
-        return "mock";
+    private Location fetchLocationFromText(String instruction) {
+        Location loc;
+        String locStr = "";
+        if(properNouns.isEmpty()) {
+            return null;
+        }
+        for(String noun: properNouns) {
+            locStr += " " + noun;
+        }
+        loc = getLocation(locStr);
+        if( loc != null) {
+            Log.i("Loc = ", loc.getLocationName());
+            return loc;
+        }
+        return null;
+    }
+
+    private Location getLocation(String noun) {
+        return new Location(noun, "123");
+    }
+
+    private String bookRide() {
+        Vehicle vehicle = new Vehicle("MH12 1234", "Mini", "Celerio");
+        Driver driver = new Driver("Dilip", vehicle, "212211", 5);
+        ride.setDriver(driver);
+        ride.setRideStatus("BOOKED");
+        ride.setTimeInMinutesForDriver(4);
+        ride.setTimeInMinutesToReachDest(15);
+        return "Ride successfully booked";
+    }
+
+    private String processChangeDestination(String instruction) {
+        Location loc = fetchLocationFromText(instruction);
+        if(loc != null) {
+            last_question = Question.CONFIRM_DEST;
+            dest = loc;
+            return "Do you want to change the drop to "+loc.getLocationName()+"?";
+        }
+        last_question = Question.UPDATE_DEST_QUESTION;
+        return "Are you sure you want to update the destination from "+dest.getLocationName();
+    }
+
+    private String processChangeSource(String instruction) {
+        Location loc = fetchLocationFromText(instruction);
+        if(loc != null) {
+            last_question = Question.CONFIRM_SOURCE;
+            source = loc;
+            return "Do you want to change the pickup to "+loc.getLocationName()+"?";
+        }
+        last_question = Question.UPDATE_SOURCE_QUESTION;
+        return "Are you sure you want to update the source from "+source.getLocationName();
+    }
+
+    private String processVehicleInquiry() {
+        return "vehicle details";
+    }
+
+    private String processDriverInquiry() {
+        return "driver details";
+    }
+
+    private String processLocationInquiry() {
+        return "curr location";
+    }
+
+    private String processBookCabCommand(String instruction) {
+        source = fetchSourceLocationFromInstr(instruction);
+        dest = fetchDropLocationFromInstr(instruction);
+        return confirmSourceAndDest();
+    }
+
+    String confirmSourceAndDest() {
+        if(dest == null) {
+            last_question = Question.USE_CURRENT_LOCATION;
+            return "Do you want to use your current location as the pickup?";
+        }
+        if(source == null) {
+            last_question = Question.SPECIFY_DEST;
+            return "Please specify destination";
+        }
+        last_question = Question.CONFIRM_SRC_DEST;
+        return "Request to book a cab from "+source.getLocationName()+" to "+dest.getLocationName()+" received. Do you want to look for nearby rides?";
     }
     private Location fetchSourceLocationFromInstr(String instruction) {
-        // TODO: Process the text to fetch starting point
-        if(instruction == "nonnull") {
-        return new Location("Kharadi,Pune,Maharashtra", "xyz");}
-        else return null;
+            for(int i=0; i<tokens.length; i++) {
+                if(tokens[i].equals("from") && properNouns.contains(tokens[i+1].toLowerCase())) {
+                    String locString = tokens[i+1];
+                    i++;
+                    while(i+1<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
+                        locString += " "+tokens[i+1];
+                    }
+                    Log.i("Source = ", locString);
+                    return getLocation(locString);
+                }
+            }
+            return null;
     }
 
     private Location fetchDropLocationFromInstr(String instruction) {
-        // TODO: Process the text to fetch dropping point
-        if(instruction == "nonnull") {
-            return new Location("Wakad,Pune,Maharashtra", "abc");
+        for(int i=0; i<tokens.length; i++) {
+            if(tokens[i].equals("to") && properNouns.contains(tokens[i+1].toLowerCase())) {
+                String locString = tokens[i+1];
+                i++;
+                while(i+1<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
+                    locString += " "+tokens[i+1];
+                }
+                Log.i("Dest = ", locString);
+                return getLocation(locString);
+            }
         }
-        else return null;
+        return null;
     }
 }
