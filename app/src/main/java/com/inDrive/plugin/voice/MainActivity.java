@@ -25,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "InDriveMainActivity";
@@ -37,10 +39,11 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.RECORD_AUDIO
     };
     private static final int PERMISSION_REQUEST_CODE = 200;
+
     private Chatbot chatbot;
 
-    private volatile SpeechToTextProvider speechToTextProvider;
-    private volatile TextToSpeechProvider textToSpeechProvider;
+    private SpeechToTextProvider speechToTextProvider;
+    private TextToSpeechProvider textToSpeechProvider;
 
     private RecyclerView recyclerView;
     private MessageListAdapter messageListAdapter;
@@ -50,6 +53,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         Log.d(TAG, "Activity Created.");
+
+        checkMissingPermissions();
 
         recyclerView = (RecyclerView) findViewById(R.id.recycler_chat);
         messageListAdapter = new MessageListAdapter(this, new ArrayList<>());
@@ -62,8 +67,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-
-        checkMissingPermissions();
 
         speechToTextProvider = SpeechToTextProvider.getInstance(this);
         textToSpeechProvider = TextToSpeechProvider.getInstance(this);
@@ -128,17 +131,28 @@ public class MainActivity extends AppCompatActivity {
 
         messageListAdapter.addMessage(message);
         recyclerView.scrollToPosition(messageListAdapter.getItemCount() - 1);
+
     }
 
     private class TextToSpeechActionListener implements ActionListenerCallback {
 
         @Override
         public void onInitialized() {
-            String text = "Hello Juilee! Have a look at this chat UI. I took the liberty to change " +
-                    "the app theme a little bit. Let me know how it looks. And yes, your code is not " +
-                    "poor. What you have done in merely a week is astonishing.";
+            Thread thread = new Thread(() -> {
+                try {
+                    while (!chatbot.isInitialized()) Thread.sleep(100);
+                } catch (Exception e) {}
+            });
+            thread.start();
+
+            try {
+                thread.join();
+            } catch (Exception e) {}
+
+            String text = "The system is initialized. Start talking after the beep. Please ensure your device is closer to your mouth for best experience.";
             addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
-            new Thread(() -> textToSpeechProvider.speak(text)).start();
+            textToSpeechProvider.speak(text);
+
             new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
 
@@ -179,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
                 String ans = chatbot.getResponse(inferredText);
                 addMessageToRecyclerView(new Message(ans, Sender.SYSTEM));
 
-                new Thread(() -> textToSpeechProvider.speak(ans)).start();
+                textToSpeechProvider.speak(ans);
                 new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
 
             }
@@ -191,10 +205,10 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onActionFailed() {
-            String text = "Did you say something?";
+            /*String text = "Did you say something?";
             addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
 
-            new Thread(() -> textToSpeechProvider.speak(text)).start();
+            textToSpeechProvider.speak(text);*/
             new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
         }
     }

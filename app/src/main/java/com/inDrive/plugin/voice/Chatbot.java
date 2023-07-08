@@ -5,9 +5,11 @@ import android.util.Log;
 
 import com.inDrive.plugin.entities.Driver;
 import com.inDrive.plugin.entities.Location;
+import com.inDrive.plugin.entities.LocationCoordinate;
 import com.inDrive.plugin.entities.Passenger;
 import com.inDrive.plugin.entities.Ride;
 import com.inDrive.plugin.entities.Vehicle;
+import com.inDrive.plugin.navigation.NavigationProvider;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -16,9 +18,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import opennlp.tools.doccat.BagOfWordsFeatureGenerator;
@@ -82,26 +86,28 @@ public class Chatbot {
     private String[] tokens;
     private ExecutorService executorService = Executors.newFixedThreadPool(5);
 
+    private AtomicInteger initializerCount;
+
+    private NavigationProvider navigationProvider;
+
     public Chatbot(Context context, Passenger passenger) throws InterruptedException {
         this.context = context;
         last_question = Question.NULL;
         ride = new Ride(passenger);
+        navigationProvider = new NavigationProvider(context);
         System.setProperty("org.xml.sax.driver", "org.xmlpull.v1.sax2.Driver");
+        initializerCount = new AtomicInteger(0);
         try {
             model = trainCategorizerModel();
+            initializeDocumentCategorizer();
+            initializerCount.addAndGet(1);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
         executorService.submit(() -> {
             try {
                 initializeSentenceModel();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        executorService.submit(() -> {
-            try {
-                initializeDocumentCategorizer();
+                initializerCount.addAndGet(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -109,6 +115,7 @@ public class Chatbot {
         executorService.submit(() -> {
             try {
                 initializePOSModel();
+                initializerCount.addAndGet(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -116,6 +123,7 @@ public class Chatbot {
         executorService.submit(() -> {
             try {
                 initializeTokenizerModel();
+                initializerCount.addAndGet(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -123,13 +131,11 @@ public class Chatbot {
         executorService.submit(() -> {
             try {
                 initializeLemmatizer();
+                initializerCount.addAndGet(1);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         });
-        executorService.shutdown();
-        while (!executorService.awaitTermination(100, TimeUnit.MILLISECONDS)) {}
-        Log.i("FINISHED ", "threads finished execution");
     }
 
     private void initializeSentenceModel() throws IOException {
@@ -146,6 +152,10 @@ public class Chatbot {
                 is.close();
             }
         }
+    }
+
+    public boolean isInitialized() {
+        return (initializerCount.get() == 5);
     }
 
     private void initializeTokenizerModel() throws IOException {
@@ -550,7 +560,12 @@ public class Chatbot {
     }
 
     private Location getCurrentLocation() {
-        return new Location("", "");
+        Optional<Location> locationOptional = navigationProvider.getCurrentLocation();
+
+        if (!locationOptional.isPresent())
+            return null;
+
+        return locationOptional.get();
     }
 
     private void textToSpeech(String s) {
@@ -574,7 +589,12 @@ public class Chatbot {
     }
 
     private Location getLocation(String noun) {
-        return new Location(noun, "123");
+        Optional<Location> locationOptional = navigationProvider.getLocation(noun);
+
+        if (!locationOptional.isPresent())
+            return null;
+
+        return locationOptional.get();
     }
 
     private String bookRide() {

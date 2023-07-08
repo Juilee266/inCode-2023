@@ -14,6 +14,12 @@ public class GeocodeRequest {
 
     private String provider;
 
+    private Double latitude = null;
+
+    private Double longitude = null;
+
+    private boolean reverse = false;
+
     public String toString() {
         StringBuilder builder = new StringBuilder("");
 
@@ -28,6 +34,11 @@ public class GeocodeRequest {
 
         if (provider != null && provider.trim().length() > 0)
             builder.append(String.format("&provider=%s", provider));
+
+        if (latitude != null && longitude != null)
+            builder.append(String.format("&point=" + latitude + "," + longitude));
+
+        builder.append("&reverse=" + reverse);
 
         return builder.toString();
     }

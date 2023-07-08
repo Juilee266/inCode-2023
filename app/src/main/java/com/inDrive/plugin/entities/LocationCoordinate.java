@@ -8,11 +8,11 @@ import lombok.ToString;
 
 @Getter
 @Setter
-@ToString
 @NoArgsConstructor
 @AllArgsConstructor
-public class Location {
-    private String locationName;
+@ToString
+public class LocationCoordinate {
+    private double latitude;
 
-    private LocationCoordinate locationCoordinates;
+    private double longitude;
 }
