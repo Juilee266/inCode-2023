@@ -12,7 +12,7 @@ import lombok.ToString;
 @Setter
 @ToString
 public class Geocode {
-    private Location point;
+    private Point point;
 
     private List<Double> extent;
 
