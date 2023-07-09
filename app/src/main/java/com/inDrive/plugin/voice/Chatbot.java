@@ -1,15 +1,18 @@
 package com.inDrive.plugin.voice;
 
 import android.content.Context;
+import android.content.Intent;
+import android.os.Handler;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import com.inDrive.plugin.entities.Driver;
 import com.inDrive.plugin.entities.Location;
-import com.inDrive.plugin.entities.LocationCoordinate;
 import com.inDrive.plugin.entities.Passenger;
 import com.inDrive.plugin.entities.Ride;
 import com.inDrive.plugin.entities.Vehicle;
 import com.inDrive.plugin.navigation.NavigationProvider;
+import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -21,7 +24,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -231,7 +233,7 @@ public class Chatbot {
                 if(posTags[i].equals("NNP")) {
                     properNouns.add(tokens[i].toLowerCase());
                 }
-                if(tokens.length <= 2 && posTags[i].equals("NN")) {
+                if(tokens.length <= 3 && posTags[i].equals("NN")) {
                     properNouns.add(tokens[i].toLowerCase());
                 }
             }
@@ -383,19 +385,22 @@ public class Chatbot {
     public String processInstruction(String category, String instruction) {
         Log.i("INSTR TYPE ", last_question.toString());
         String response = "";
+        Location loc;
 
         if(last_question == Question.SPECIFY_DEST || last_question == Question.UPDATE_DEST_QUESTION) {
-            dest = fetchLocationFromText(instruction);
-            if(dest != null) {
+            loc = fetchLocationFromText(instruction);
+            if(loc != null) {
+                dest = loc;
                 last_question = Question.CONFIRM_DEST;
-                return "Are you sure you want to change the destination to "+dest.getLocationName()+"?";
+                return "Do you want to set the drop location to "+dest.getLocationName()+"?";
             }
         }
         if(last_question == Question.SPECIFY_SOURCE  || last_question == Question.UPDATE_SOURCE_QUESTION) {
-            source = fetchLocationFromText(instruction);
-            if(source != null) {
+            loc = fetchLocationFromText(instruction);
+            if(loc != null) {
+                source = loc;
                 last_question = Question.CONFIRM_SOURCE;
-                return "Are you sure you want to change the pickup to "+source.getLocationName()+"?";
+                return "Do you want to set the pickup location to "+source.getLocationName()+"?";
             }
         }
 
@@ -405,7 +410,7 @@ public class Chatbot {
                 last_question = Question.GREETING;
                 break;
             case BOOK_CAB_INSTR:
-                response =  processBookCabCommand(instruction);
+                response =  processBookCabCommand();
                 break;
             case LOCATION_INQUIRY:
                 response =  processLocationInquiry();
@@ -426,23 +431,30 @@ public class Chatbot {
                 else response = "";
                 break;
             case TIME_TO_REACH:
-                if(ride.getRideStatus() != "NOT_BOOKED") {
+                if(!ride.getRideStatus().equals("NOT_BOOKED")) {
                     response = "You will reach the destination in "+ride.getTimeInMinutesToReachDest()+" minutes.";
                 }
                 else response = "";
                 break;
             case CHANGE_SOURCE :
-                response = processChangeSource(instruction);
+                if(ride.getRideStatus().equals("STARTED")) {
+                    response = "Ride is already started. You cannot update pickup now.";
+                }
+                else {
+                    response = processChangeSource(instruction);
+                }
                 break;
             case CHANGE_DESTINATION :
                 response = processChangeDestination(instruction);
                 break;
             case OTP_INQUIRY :
-                response = "Your OTP is One Two Three Four.";
+                if(!ride.getRideStatus().equals("NOT_BOOKED")) {
+                    response = "Your OTP is " + ride.getOtp() + ".";
+                }
+                else response = "Ride is not booked yet.";
                 break;
             case START_RIDE:
-                ride.setRideStatus("STARTED");
-                response = "Ride started. Enjoy your journey!";
+                response = startRide();
                 break;
             case ALL_GOOD :
                 response = "Okay";
@@ -468,27 +480,32 @@ public class Chatbot {
                     response = "Please specify the updated destination";
                 }
                 else if(last_question == Question.UPDATE_SOURCE_QUESTION) {
-                    last_question = Question.SPECIFY_SOURCE;
-                    response = "Please specify the updated pickup";
+                    last_question = Question.USE_CURRENT_LOCATION;
+                    response =  "Do you want to use your current location as the pickup?";
                 }
                 else if(last_question == Question.CONFIRM_DEST) {
                     ride.setDestination(dest);
-                    textToSpeech("Successfully updated destination to "+ dest.getLocationName());
-                    response = confirmSourceAndDest();
+                    response = "Successfully updated destination to "+ dest.getLocationName()+". ";
+                    if(!ride.getRideStatus().equals("STARTED")) {
+                        response += confirmSourceAndDest();
+                    }
                 }
                 else if(last_question == Question.CONFIRM_SOURCE) {
                     ride.setDestination(dest);
-                    textToSpeech("Successfully updated pickup to "+ source.getLocationName());
-                    response = confirmSourceAndDest();
+                    response = "Successfully updated pickup to "+ source.getLocationName()+". ";
+                    if(!ride.getRideStatus().equals("STARTED")) {
+                        response += confirmSourceAndDest();
+                    }
                 }
                 else if(last_question.equals(Question.USE_CURRENT_LOCATION)) {
                     source = getCurrentLocation();
-                    textToSpeech("Successfully updated pickup to "+ source.getLocationName());
-                    response = confirmSourceAndDest();
+                    response = "Successfully updated pickup to "+ source.getLocationName()+". ";
+                    response += confirmSourceAndDest();
                 }
                 else if(last_question.equals(Question.SURE_CANCEL)) {
                     response = cancelRide();
                 }
+
                 break;
             case NEGATION:
                 if(last_question.equals(Question.CONFIRM_SRC_DEST)) {
@@ -501,36 +518,67 @@ public class Chatbot {
                     }
                 }
                 else if(last_question == Question.UPDATE_DEST_QUESTION) {
-                    last_question = Question.UPDATE_SOURCE_QUESTION;
-                    if(source != null) {
-                        response = "Do you want to update the pickup from " + source.getLocationName();
+                    if(ride.getRideStatus().equals("STARTED")) {
+                        last_question = Question.NULL;
+                        response = "Okay.";
                     }
                     else {
-                        response = "Do you want to update the pickup?";
+                        last_question = Question.UPDATE_SOURCE_QUESTION;
+                        if (source != null) {
+                            response = "Do you want to update the pickup from " + source.getLocationName();
+                        } else {
+                            response = "Do you want to update the pickup?";
+                        }
                     }
                 }
                 else if(last_question == Question.UPDATE_SOURCE_QUESTION) {
-                    response = confirmSourceAndDest();
+                    if(ride.getSource() != null && ride.getDestination() != null) {
+                        response = "Okay.";
+                    }
+                    else {
+                        response = confirmSourceAndDest();
+                    }
                 }
                 else if(last_question == Question.CONFIRM_DEST) {
-                    ride.setDestination(dest);
-                    textToSpeech("Successfully updated destination to "+ dest.getLocationName());
-                    response = confirmSourceAndDest();
+                    dest = ride.getDestination();
+                    if(ride.getSource() != null && ride.getDestination() != null) {
+                        response = "Okay.";
+                    }
+                    else {
+                        response = confirmSourceAndDest();
+                    }
                 }
                 else if(last_question == Question.CONFIRM_SOURCE) {
-                    ride.setDestination(dest);
-                    textToSpeech("Successfully updated pickup to "+ dest.getLocationName());
-                    response = confirmSourceAndDest();
+                    source = ride.getSource();
+                    if(ride.getSource() != null && ride.getDestination() != null) {
+                        response = "Okay.";
+                    }
+                    else {
+                        response = confirmSourceAndDest();
+                    }
+                }
+                else if(last_question.equals(Question.USE_CURRENT_LOCATION)) {
+                    last_question = Question.SPECIFY_SOURCE;
+                    response = "Please specify the pickup location.";
+                }
+                else if(last_question.equals(Question.SURE_CANCEL)) {
+                    response = "Okay.";
                 }
                 break;
             case CANCEL_RIDE:
-                response = "Are you sure you want to cancel the ride?";
-                last_question = Question.SURE_CANCEL;
+                if(!ride.getRideStatus().equals("NOT_BOOKED")) {
+                    response = "Ride not booked yet.";
+                }
+                else {
+                    response = "Are you sure you want to cancel the ride?";
+                    last_question = Question.SURE_CANCEL;
+                }
                 break;
             case CALL_DRIVER:
                 response = callDriver();
                 break;
             case STOP_PROCESS:
+                response = "Sure.";
                 break;
             default:
                 response = "Sorry. Could you repeat?";
@@ -540,8 +588,55 @@ public class Chatbot {
         return response;
     }
 
+    private String startRide() {
+        if(ride.getRideStatus().equals("DRIVER_ARRIVED")) {
+            ride.setRideStatus("STARTED");
+            NavigationProvider navigationProvider = new NavigationProvider(context);
+            Optional<DirectionResponse> response = navigationProvider.getDirections(ride.getSource().getLocationName(), ride.getDestination().getLocationName());
+
+            //            navigationProvider.getDirections()
+            List<List<Double>> coords = response.get().getPaths().get(0).getPoints().getCoordinates();
+            int index = coords.size()/5;
+            final Handler handler = new Handler();
+            for(int i=0; i<3; i++) {
+                int finalI = i;
+                handler.postDelayed(() -> {
+                            ride.setTimeInMinutesToReachDest(ride.getTimeInMinutesToReachDest() - 2);
+                            Intent intent = new Intent("TTS_REQ_FROM_CHATBOT");
+                            // You can also include some extra data.
+                            intent.putExtra("message", "You are now passing by "+
+                                    navigationProvider.getLocation(coords.get(index* (finalI+1)).get(1), coords.get(index* (finalI+1)).get(0)).get().getLocationName());
+                            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+                        }
+                        , 15000*(i+1));
+
+            }
+            handler.postDelayed(() -> {
+                ride.setTimeInMinutesToReachDest(0);
+                ride.setRideStatus("REACHED");
+                Intent intent = new Intent("REACHED_DEST");
+                // You can also include some extra data.
+                intent.putExtra("message", "You have arrived at the destination.");
+                LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+            }, 60000);
+
+//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index).get(1), coords.get(index).get(0)).get().getLocationName());
+//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*2).get(1), coords.get(index*2).get(0)).get().getLocationName());
+//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*3).get(1), coords.get(index*3).get(0)).get().getLocationName());
+//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*4).get(1), coords.get(index*4).get(0)).get().getLocationName());
+             return  "Ride started. Enjoy your journey!";
+        }
+        else if(ride.getRideStatus().equals("BOOKED")) {
+            return "Please wait for the driver to arrive.";
+        }
+        else return "Please book a cab first.";
+    }
+
     private String callDriver() {
-        return "calling driver at " + ride.getDriver().getDriverContact();
+        if(ride.getRideStatus().equals("NOT_BOOKED") || ride.getDriver() == null){
+            return "No driver assigned.";
+        }
+        return "Calling the driver at " + ride.getDriver().getDriverContact();
 
     }
 
@@ -568,8 +663,6 @@ public class Chatbot {
         return locationOptional.get();
     }
 
-    private void textToSpeech(String s) {
-    }
 
     private Location fetchLocationFromText(String instruction) {
         Location loc;
@@ -598,13 +691,39 @@ public class Chatbot {
     }
 
     private String bookRide() {
-        Vehicle vehicle = new Vehicle("MH12 1234", "Mini", "Celerio");
-        Driver driver = new Driver("Dilip", vehicle, "212211", 5);
+        Vehicle vehicle = new Vehicle("MH12 3 2 1 2", "Mini", "Celerio");
+        Driver driver = new Driver("Dilip", vehicle, "2 1 2 2 1 1", 5);
         ride.setDriver(driver);
         ride.setRideStatus("BOOKED");
-        ride.setTimeInMinutesForDriver(4);
-        ride.setTimeInMinutesToReachDest(15);
-        return "Ride successfully booked";
+        ride.setTimeInMinutesForDriver(8);
+        NavigationProvider navigationProvider = new NavigationProvider(context);
+        Optional<DirectionResponse> response = navigationProvider.getDirections(ride.getSource().getLocationName(), ride.getDestination().getLocationName());
+        long timeToReach = response.get().getPaths().get(0).getTime()/60000;
+        ride.setTimeInMinutesToReachDest((int)timeToReach);
+        final Handler handler = new Handler();
+        for(int i=0; i<2; i++) {
+            handler.postDelayed(() -> {
+                ride.setTimeInMinutesForDriver(ride.getTimeInMinutesForDriver() - 2);
+                Intent intent = new Intent("TTS_REQ_FROM_CHATBOT");
+                        // You can also include some extra data.
+                intent.putExtra("message", "Your driver is arriving in "+ride.getTimeInMinutesForDriver()+" minutes.");
+                LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+            }
+            , 12000*(i+1));
+
+        }
+        handler.postDelayed(() -> {
+            ride.setTimeInMinutesForDriver(0);
+            ride.setRideStatus("DRIVER_ARRIVED");
+            Intent intent = new Intent("TTS_REQ_FROM_CHATBOT");
+            // You can also include some extra data.
+            intent.putExtra("message", "The driver has arrived. Wait for the driver to approach you.");
+            LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
+        }, 36000);
+        return "Ride successfully booked. Your driver "+ride.getDriver().getDriverName()+" is arriving in "+ride.getTimeInMinutesForDriver()+" minutes. "
+                +"Booked cab is a "+ride.getDriver().getVehicle().getVehicleModel()+" with number "+ride.getDriver().getVehicle().getVehicleNumber()
+                +". Your One time password is "+ride.getOtp();
     }
 
     private String processChangeDestination(String instruction) {
@@ -630,57 +749,65 @@ public class Chatbot {
     }
 
     private String processVehicleInquiry() {
-        return "vehicle details";
+        if(ride.getRideStatus().equals("NOT_BOOKED") || ride.getDriver() == null){
+            return "No vehicle assigned.";
+        }
+        return "Your ride is a "+ride.getDriver().getVehicle().getVehicleModel()+" with number "+ride.getDriver().getVehicle().getVehicleNumber()+".";
     }
 
     private String processDriverInquiry() {
-        return "driver details";
+        if(ride.getRideStatus().equals("NOT_BOOKED") || ride.getDriver() == null){
+            return "No driver assigned.";
+        }
+        return ride.getDriver().getDriverName()+" is your driver. They drive a "+ride.getDriver().getVehicle().getVehicleModel()+". They have a rating of  "+ride.getDriver().getStars()+" stars.";
     }
 
     private String processLocationInquiry() {
-        return "curr location";
+        return "Your current location is " +getCurrentLocation().getLocationName();
     }
 
-    private String processBookCabCommand(String instruction) {
-        source = fetchSourceLocationFromInstr(instruction);
-        dest = fetchDropLocationFromInstr(instruction);
+    private String processBookCabCommand() {
+        source = fetchSourceLocationFromInstr();
+        dest = fetchDropLocationFromInstr();
         return confirmSourceAndDest();
     }
 
     String confirmSourceAndDest() {
         if(dest == null) {
-            last_question = Question.USE_CURRENT_LOCATION;
-            return "Do you want to use your current location as the pickup?";
-        }
-        if(source == null) {
             last_question = Question.SPECIFY_DEST;
             return "Please specify destination";
+        }
+        if(source == null) {
+            last_question = Question.USE_CURRENT_LOCATION;
+            return "Do you want to use your current location as the pickup?";
         }
         last_question = Question.CONFIRM_SRC_DEST;
         return "Request to book a cab from "+source.getLocationName()+" to "+dest.getLocationName()+" received. Do you want to look for nearby rides?";
     }
-    private Location fetchSourceLocationFromInstr(String instruction) {
-            for(int i=0; i<tokens.length; i++) {
-                if(tokens[i].equals("from") && properNouns.contains(tokens[i+1].toLowerCase())) {
-                    String locString = tokens[i+1];
-                    i++;
-                    while(i+1<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
-                        locString += " "+tokens[i+1];
-                    }
-                    Log.i("Source = ", locString);
-                    return getLocation(locString);
-                }
-            }
-            return null;
-    }
-
-    private Location fetchDropLocationFromInstr(String instruction) {
+    private Location fetchSourceLocationFromInstr() {
         for(int i=0; i<tokens.length; i++) {
-            if(tokens[i].equals("to") && properNouns.contains(tokens[i+1].toLowerCase())) {
+            if((i+1)<tokens.length && tokens[i].equals("from") && properNouns.contains(tokens[i+1].toLowerCase())) {
                 String locString = tokens[i+1];
                 i++;
-                while(i+1<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
+                while((i+1)<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
                     locString += " "+tokens[i+1];
+                    i++;
+                }
+                Log.i("Source = ", locString);
+                return getLocation(locString);
+            }
+        }
+        return null;
+    }
+
+    private Location fetchDropLocationFromInstr() {
+        for(int i=0; i<tokens.length; i++) {
+            if((i+1)<tokens.length  && tokens[i].equals("to") && properNouns.contains(tokens[i+1].toLowerCase())) {
+                String locString = tokens[i+1];
+                i++;
+                while((i+1)<tokens.length && properNouns.contains(tokens[i+1].toLowerCase())) {
+                    locString += " "+tokens[i+1];
+                    i++;
                 }
                 Log.i("Dest = ", locString);
                 return getLocation(locString);

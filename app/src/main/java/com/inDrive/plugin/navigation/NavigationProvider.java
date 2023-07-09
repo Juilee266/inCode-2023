@@ -75,7 +75,9 @@ public class NavigationProvider {
             return Optional.empty();
 
         GeocodeResponse geocodeResponse = geocodeResponseOptional.get();
-
+        if(geocodeResponse.getHits().isEmpty()) {
+            return null;
+        }
         Geocode geoCode = geocodeResponse.getHits().get(0);
         Location location =  new Location();
         if (!StringUtil.isEmpty(geoCode.getName()))

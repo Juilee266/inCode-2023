@@ -1,19 +1,26 @@
 package com.inDrive.plugin.voice;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
+import android.widget.TextView;
 
 import com.inDrive.plugin.common.ActionListenerCallback;
 import com.inDrive.plugin.common.SpeechToTextProvider;
 import com.inDrive.plugin.common.TextToSpeechProvider;
+import com.inDrive.plugin.entities.Location;
 import com.inDrive.plugin.entities.Passenger;
 import com.inDrive.plugin.navigation.NavigationProvider;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
@@ -48,6 +55,8 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private MessageListAdapter messageListAdapter;
 
+    private boolean hasConvEnded = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -56,6 +65,10 @@ public class MainActivity extends AppCompatActivity {
 
         checkMissingPermissions();
 
+        LocalBroadcastManager.getInstance(this).registerReceiver(updateFromChatbot,
+                new IntentFilter("TTS_REQ_FROM_CHATBOT"));
+        LocalBroadcastManager.getInstance(this).registerReceiver(finishConversation,
+                new IntentFilter("REACHED_DEST"));
         recyclerView = (RecyclerView) findViewById(R.id.recycler_chat);
         messageListAdapter = new MessageListAdapter(this, new ArrayList<>());
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -74,11 +87,28 @@ public class MainActivity extends AppCompatActivity {
         speechToTextProvider.setTextToSpeechProvider(textToSpeechProvider);
         speechToTextProvider.registerActionListenerCallback(new SpeechToTextActionListener());
         textToSpeechProvider.registerActionListenerCallback(new TextToSpeechActionListener());
-
-        NavigationProvider navigationProvider = new NavigationProvider(this);
-        Optional<DirectionResponse> response = navigationProvider.getDirections("Kasba Ganpati", "Shivajinagar Railway Station");
-        Log.d(TAG, response.get().toString());
     }
+
+    private BroadcastReceiver updateFromChatbot = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Get extra data included in the Intent
+            String message = intent.getStringExtra("message");
+            addMessageToRecyclerView(new Message(message, Sender.SYSTEM));
+            textToSpeechProvider.speak(message);
+        }
+    };
+
+    private BroadcastReceiver finishConversation = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            // Get extra data included in the Intent
+            String message = intent.getStringExtra("message");
+            addMessageToRecyclerView(new Message(message, Sender.SYSTEM));
+            textToSpeechProvider.speak(message);
+            hasConvEnded = true;
+        }
+    };
 
     @Override
     protected  void onStart() {
@@ -149,7 +179,7 @@ public class MainActivity extends AppCompatActivity {
                 thread.join();
             } catch (Exception e) {}
 
-            String text = "The system is initialized. Start talking after the beep. Please ensure your device is closer to your mouth for best experience.";
+            String text = "Welcome to InDrive. This is a demo of the ride hailing plugin for the blind and visually impaired. Please speak after the beep.";
             addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
             textToSpeechProvider.speak(text);
 
@@ -187,10 +217,22 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onActionCompleted(Map<String, Object> resultMap) {
             try {
+
                 String inferredText = (String) resultMap.get(SpeechToTextProvider.STT_INFERRED_TEXT);
                 addMessageToRecyclerView(new Message(inferredText, Sender.USER));
-
-                String ans = chatbot.getResponse(inferredText);
+                String ans;
+                if(!hasConvEnded) {
+                    ans = chatbot.getResponse(inferredText);
+                }
+                else {
+                    if(inferredText.contains("5")) {
+                        ans = "Thanks! Enjoy your day!";
+                        hasConvEnded = false;
+                    }
+                    else {
+                        ans = "Please give us a rating from 1 to 5.";
+                    }
+                }
                 addMessageToRecyclerView(new Message(ans, Sender.SYSTEM));
 
                 textToSpeechProvider.speak(ans);

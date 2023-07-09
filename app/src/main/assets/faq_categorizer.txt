@@ -1,13 +1,13 @@
 greeting    hi hi. hello how are you ? hey . hows it going good morning good evening good afternoon whats up
-book_cab_instruction    call me a cab from book a cab for me? Book a cab for me from to I want to go from to
+book_cab_instruction    call me a cab from book a cab for me? Book a cab for me from to I want to go from to book a cab from
 location_inquiry    where am i right now? where are we current location. current location?
 driver_inquiry  drivers details driver name of the driver? who is the driver?
 vehicle_inquiry vehicle number. vehicle details? car cab details? ride details
-time_for_driver how long for driver? how much time? when will driver come? wait time arrival
-time_to_reach   how long will it take to reach? when reach? how much time till we reach?
-change_source   change my pickup source. update my location. update my pickup source
+time_for_driver when is the driver arriving? how long for driver? how much time? when will driver come? wait time arrival
+time_to_reach   how long will it take to reach? when reach? how much time till we reach? time reach destination
+change_source   change my pickup source. update my location. update my pickup
 change_destination  change dropping point . destination update drop
-otp_inquiry  OTP? OTP Repeat OTP.
+otp_inquiry  One time password
 start_instruction   start ride
 all_okay    everything is good okay alright safe
 stars   give stars five four three two one
@@ -15,4 +15,4 @@ affirmation yes yeah correct right confirm sure .
 negation no dont nope
 call_driver call contact
 cancel_ride cancel ride stop searching
-stop_process stop wait don't book
+stop_process stop wait don't
