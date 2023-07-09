@@ -86,6 +86,32 @@ public class GraphhopperClient {
         return Optional.empty();
     }
 
+    public Optional<GeocodeResponse> getGeocode(double latitude, double longitude) {
+        String url = String.format(
+                "%s&%s",
+                this.getUrl("geocode"),
+                this.getGeocodeRequest(latitude, longitude)
+        );
+
+        try {
+            Future<GeocodeResponse> resultFuture = executorService.submit(new Callable<GeocodeResponse>() {
+                @Override
+                public GeocodeResponse call() throws Exception {
+                    String responseJson = httpClient.get(url);
+                    return objectMapper.readValue(responseJson, GeocodeResponse.class);
+                }
+            });
+            GeocodeResponse result = resultFuture.get();
+            Log.d(TAG, "Geocode Result: " + result);
+
+            return Optional.of(result);
+        } catch (Exception ex) {
+            Log.e(TAG, ex.toString());
+        }
+
+        return Optional.empty();
+    }
+
     private String getUrl(String api) {
         return String.format("%s/%s?key=%s", BASE_URL, api, API_KEY);
     }
@@ -110,6 +136,18 @@ public class GraphhopperClient {
         request.setLocale("en");
         request.setProvider("default");
         request.setQuery(place);
+        request.setReverse(false);
+        return request;
+    }
+
+    private GeocodeRequest getGeocodeRequest(double latitude, double longitude) {
+        GeocodeRequest request = new GeocodeRequest();
+        request.setLimit(1);
+        request.setLocale("en");
+        request.setProvider("default");
+        request.setLatitude(latitude);
+        request.setLongitude(longitude);
+        request.setReverse(true);
         return request;
     }
 }

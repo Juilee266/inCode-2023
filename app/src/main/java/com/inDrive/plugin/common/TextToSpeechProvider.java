@@ -5,6 +5,11 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.util.Log;
 
+import com.inDrive.plugin.common.callbacks.ActionListenerCallback;
+import com.inDrive.plugin.common.callbacks.OnInitListenerCallback;
+
+import org.w3c.dom.Text;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -12,8 +17,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import lombok.Getter;
 
 public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
     private static final String TAG = "TextToSpeechProvider";
@@ -27,11 +30,14 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
     private SpeechToTextProvider speechToTextProvider;
     private List<ActionListenerCallback> actionListenerCallbacks;
 
+    private List<OnInitListenerCallback> onInitListenerCallbacks;
+
     private TextToSpeechProvider(Context context) {
         this.context = context;
         executorService = Executors.newSingleThreadExecutor();
         textToSpeech = new TextToSpeech(context, this);
         actionListenerCallbacks = new ArrayList<>();
+        onInitListenerCallbacks = new ArrayList<>();
         isOkayToSpeak = new AtomicBoolean(false);
 
         Log.i(TAG, "Successfully initialized text to speech provider.");
@@ -58,6 +64,10 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
         actionListenerCallbacks.add(callback);
     }
 
+    public void registerOnInitListenerCallback(OnInitListenerCallback callback) {
+        onInitListenerCallbacks.add(callback);
+    }
+
     @Override
     public void onInit(int status) {
         if (status != TextToSpeech.SUCCESS) {
@@ -80,7 +90,7 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
         isOkayToSpeak.set(true);
         Log.i(TAG, "Successfully initialized text to speech with locale en-US.");
 
-        for (ActionListenerCallback callback : actionListenerCallbacks) {
+        for (OnInitListenerCallback callback : onInitListenerCallbacks) {
             callback.onInitialized();
         }
     }
@@ -111,12 +121,6 @@ public class TextToSpeechProvider implements TextToSpeech.OnInitListener {
     }
 
     private class SpeechToTextActionCallback implements ActionListenerCallback {
-
-        @Override
-        public void onInitialized() {
-
-        }
-
         @Override
         public void onActionStarted() {
             isOkayToSpeak.set(false);

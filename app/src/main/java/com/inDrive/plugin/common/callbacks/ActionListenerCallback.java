@@ -1,10 +1,8 @@
-package com.inDrive.plugin.common;
+package com.inDrive.plugin.common.callbacks;
 
 import java.util.Map;
 
 public interface ActionListenerCallback {
-    void onInitialized();
-
     void onActionStarted();
 
     void onActionCompleted(Map<String, Object> resultMap);

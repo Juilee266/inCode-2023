@@ -9,7 +9,7 @@ import lombok.ToString;
 @Getter
 @Setter
 @ToString
-public class Location {
+public class Point {
     @JsonProperty("lat")
     private double latitude;
 
