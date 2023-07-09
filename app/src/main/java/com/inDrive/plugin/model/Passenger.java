@@ -1,4 +1,4 @@
-package com.inDrive.plugin.entities;
+package com.inDrive.plugin.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -11,8 +11,7 @@ import lombok.ToString;
 @NoArgsConstructor
 @AllArgsConstructor
 @ToString
-public class LocationCoordinate {
-    private double latitude;
-
-    private double longitude;
+public class Passenger {
+    private String passengerName;
+    private String passengerContact;
 }

@@ -15,15 +15,12 @@ import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
-import android.widget.TextView;
 
-import com.inDrive.plugin.common.ActionListenerCallback;
+import com.inDrive.plugin.common.callbacks.ActionListenerCallback;
 import com.inDrive.plugin.common.SpeechToTextProvider;
 import com.inDrive.plugin.common.TextToSpeechProvider;
-import com.inDrive.plugin.entities.Location;
-import com.inDrive.plugin.entities.Passenger;
-import com.inDrive.plugin.navigation.NavigationProvider;
-import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
+import com.inDrive.plugin.common.callbacks.OnInitListenerCallback;
+import com.inDrive.plugin.model.Passenger;
 import com.inDrive.plugin.ui.chat.MessageListAdapter;
 import com.inDrive.plugin.ui.chat.model.Message;
 import com.inDrive.plugin.ui.chat.model.Sender;
@@ -31,9 +28,6 @@ import com.inDrive.plugin.ui.chat.model.Sender;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "InDriveMainActivity";
@@ -56,6 +50,8 @@ public class MainActivity extends AppCompatActivity {
     private MessageListAdapter messageListAdapter;
 
     private boolean hasConvEnded = false;
+    private boolean hasChatbotInitialized = false;
+    private boolean hasTtsInitialized = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,18 +71,19 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(messageListAdapter);
 
         Passenger p = new Passenger("JJ", "123456");
-        try {
-            chatbot = new Chatbot(this, p);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        chatbot = new Chatbot(this, p);
+        chatbot.registerOnInitListenerCallback(new ChatbotInitializationListener());
 
         speechToTextProvider = SpeechToTextProvider.getInstance(this);
         textToSpeechProvider = TextToSpeechProvider.getInstance(this);
         textToSpeechProvider.setSpeechToTextProvider(speechToTextProvider);
         speechToTextProvider.setTextToSpeechProvider(textToSpeechProvider);
+
         speechToTextProvider.registerActionListenerCallback(new SpeechToTextActionListener());
-        textToSpeechProvider.registerActionListenerCallback(new TextToSpeechActionListener());
+
+        TextToSpeechActionListener ttsActionListener = new TextToSpeechActionListener();
+        textToSpeechProvider.registerActionListenerCallback(ttsActionListener);
+        textToSpeechProvider.registerOnInitListenerCallback(ttsActionListener);
     }
 
     private BroadcastReceiver updateFromChatbot = new BroadcastReceiver() {
@@ -156,6 +153,16 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, missingPermissions.toArray(new String[0]), PERMISSION_REQUEST_CODE);
     }
 
+    private void showGreeting() {
+        runOnUiThread(() -> {
+            String text = "Welcome to InDrive. This is a demo of the ride hailing plugin for the blind and visually impaired. Please speak after the beep.";
+            addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
+            textToSpeechProvider.speak(text);
+
+            new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+        });
+    }
+
     private void addMessageToRecyclerView(Message message) {
         if (message == null) return;
 
@@ -164,26 +171,15 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private class TextToSpeechActionListener implements ActionListenerCallback {
+    private class TextToSpeechActionListener implements ActionListenerCallback, OnInitListenerCallback {
 
         @Override
         public void onInitialized() {
-            Thread thread = new Thread(() -> {
-                try {
-                    while (!chatbot.isInitialized()) Thread.sleep(100);
-                } catch (Exception e) {}
-            });
-            thread.start();
+            hasTtsInitialized = true;
 
-            try {
-                thread.join();
-            } catch (Exception e) {}
+            if (!hasChatbotInitialized) return;
 
-            String text = "Welcome to InDrive. This is a demo of the ride hailing plugin for the blind and visually impaired. Please speak after the beep.";
-            addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
-            textToSpeechProvider.speak(text);
-
-            new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+            showGreeting();
         }
 
         @Override
@@ -203,12 +199,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class SpeechToTextActionListener implements ActionListenerCallback {
-
-        @Override
-        public void onInitialized() {
-
-        }
-
         @Override
         public void onActionStarted() {
 
@@ -236,7 +226,8 @@ public class MainActivity extends AppCompatActivity {
                 addMessageToRecyclerView(new Message(ans, Sender.SYSTEM));
 
                 textToSpeechProvider.speak(ans);
-                new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+                runOnUiThread(() -> new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500));
+
 
             }
             catch (Exception e) {
@@ -247,11 +238,19 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onActionFailed() {
-            /*String text = "Did you say something?";
-            addMessageToRecyclerView(new Message(text, Sender.SYSTEM));
+            runOnUiThread(() -> new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500));
+        }
+    }
 
-            textToSpeechProvider.speak(text);*/
-            new Handler().postDelayed(() ->speechToTextProvider.startListening(), 500);
+    private class ChatbotInitializationListener implements OnInitListenerCallback {
+
+        @Override
+        public void onInitialized() {
+            hasChatbotInitialized = true;
+
+            if (!hasTtsInitialized) return;
+
+            showGreeting();
         }
     }
 }

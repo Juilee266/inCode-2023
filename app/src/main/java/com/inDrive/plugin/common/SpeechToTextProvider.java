@@ -6,18 +6,16 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
-import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+
+import com.inDrive.plugin.common.callbacks.ActionListenerCallback;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import lombok.Getter;
 
 public class SpeechToTextProvider {
     public static final String STT_INFERRED_TEXT = "STT_INFERRED_TEXT";
@@ -89,11 +87,6 @@ public class SpeechToTextProvider {
     }
 
     private class TextToSpeechActionCallback implements ActionListenerCallback {
-        @Override
-        public void onInitialized() {
-
-        }
-
         @Override
         public void onActionStarted() {
             isOkayToListen.set(false);

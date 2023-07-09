@@ -7,8 +7,8 @@ import android.util.Log;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
-import com.inDrive.plugin.entities.Location;
-import com.inDrive.plugin.entities.LocationCoordinate;
+import com.inDrive.plugin.model.Location;
+import com.inDrive.plugin.model.LocationCoordinate;
 import com.inDrive.plugin.navigation.graphhopper.GraphhopperClient;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
 import com.inDrive.plugin.navigation.graphhopper.response.geocode.Geocode;
@@ -16,6 +16,7 @@ import com.inDrive.plugin.navigation.graphhopper.response.geocode.GeocodeRespons
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;

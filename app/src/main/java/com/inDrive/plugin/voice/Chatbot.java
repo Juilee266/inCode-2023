@@ -2,15 +2,18 @@ package com.inDrive.plugin.voice;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.AsyncTask;
 import android.os.Handler;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
-import com.inDrive.plugin.entities.Driver;
-import com.inDrive.plugin.entities.Location;
-import com.inDrive.plugin.entities.Passenger;
-import com.inDrive.plugin.entities.Ride;
-import com.inDrive.plugin.entities.Vehicle;
+import com.google.android.gms.tasks.Task;
+import com.inDrive.plugin.common.callbacks.OnInitListenerCallback;
+import com.inDrive.plugin.model.Driver;
+import com.inDrive.plugin.model.Location;
+import com.inDrive.plugin.model.Passenger;
+import com.inDrive.plugin.model.Ride;
+import com.inDrive.plugin.model.Vehicle;
 import com.inDrive.plugin.navigation.NavigationProvider;
 import com.inDrive.plugin.navigation.graphhopper.response.direction.DirectionResponse;
 
@@ -22,8 +25,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -88,56 +95,77 @@ public class Chatbot {
     private String[] tokens;
     private ExecutorService executorService = Executors.newFixedThreadPool(5);
 
-    private AtomicInteger initializerCount;
-
     private NavigationProvider navigationProvider;
 
-    public Chatbot(Context context, Passenger passenger) throws InterruptedException {
+    private List<OnInitListenerCallback> initListenerCallbacks;
+
+    public Chatbot(Context context, Passenger passenger) {
         this.context = context;
         last_question = Question.NULL;
         ride = new Ride(passenger);
         navigationProvider = new NavigationProvider(context);
         System.setProperty("org.xml.sax.driver", "org.xmlpull.v1.sax2.Driver");
-        initializerCount = new AtomicInteger(0);
-        try {
-            model = trainCategorizerModel();
-            initializeDocumentCategorizer();
-            initializerCount.addAndGet(1);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        executorService.submit(() -> {
+        initListenerCallbacks = new ArrayList<>();
+
+        CompletableFuture.runAsync(() -> {
             try {
-                initializeSentenceModel();
-                initializerCount.addAndGet(1);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+                List<Callable<Boolean>> callables = new ArrayList<>();
+                callables.add(() -> {
+                    try {
+                        model = trainCategorizerModel();
+                        initializeDocumentCategorizer();
+                        return true;
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+                callables.add(() -> {
+                    try {
+                        initializeSentenceModel();
+                        return true;
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+                callables.add(() -> {
+                    try {
+                        initializePOSModel();
+                        return true;
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+                callables.add(() -> {
+                    try {
+                        initializeTokenizerModel();
+                        return true;
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+                callables.add(() -> {
+                    try {
+                        initializeLemmatizer();
+                        return true;
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                });
+
+                executorService.invokeAll(callables);
+                executorService.shutdown();
+                executorService.awaitTermination(100, TimeUnit.SECONDS);
+
+                for (OnInitListenerCallback callback : initListenerCallbacks)
+                    callback.onInitialized();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
             }
         });
-        executorService.submit(() -> {
-            try {
-                initializePOSModel();
-                initializerCount.addAndGet(1);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        executorService.submit(() -> {
-            try {
-                initializeTokenizerModel();
-                initializerCount.addAndGet(1);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        executorService.submit(() -> {
-            try {
-                initializeLemmatizer();
-                initializerCount.addAndGet(1);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
+    }
+
+    public void registerOnInitListenerCallback(OnInitListenerCallback callback) {
+        initListenerCallbacks.add(callback);
     }
 
     private void initializeSentenceModel() throws IOException {
@@ -154,10 +182,6 @@ public class Chatbot {
                 is.close();
             }
         }
-    }
-
-    public boolean isInitialized() {
-        return (initializerCount.get() == 5);
     }
 
     private void initializeTokenizerModel() throws IOException {
@@ -619,11 +643,6 @@ public class Chatbot {
                 intent.putExtra("message", "You have arrived at the destination.");
                 LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
             }, 60000);
-
-//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index).get(1), coords.get(index).get(0)).get().getLocationName());
-//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*2).get(1), coords.get(index*2).get(0)).get().getLocationName());
-//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*3).get(1), coords.get(index*3).get(0)).get().getLocationName());
-//            Log.d("INTERMEDIATE", navigationProvider.getLocation(coords.get(index*4).get(1), coords.get(index*4).get(0)).get().getLocationName());
              return  "Ride started. Enjoy your journey!";
         }
         else if(ride.getRideStatus().equals("BOOKED")) {

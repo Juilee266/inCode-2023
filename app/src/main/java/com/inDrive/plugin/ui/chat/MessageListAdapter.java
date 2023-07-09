@@ -69,7 +69,8 @@ public class MessageListAdapter extends RecyclerView.Adapter {
         if (message == null || message.getText() == null || message.getText().length() == 0) return;
 
         messages.add(message);
-        new Thread(() -> notifyDataSetChanged());
+        //new Thread(() -> notifyDataSetChanged());
+        notifyDataSetChanged();
     }
 
     private class UserMessageHolder extends RecyclerView.ViewHolder {
